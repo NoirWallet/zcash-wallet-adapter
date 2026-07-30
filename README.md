@@ -1,27 +1,27 @@
 # Noir Zcash Wallet Adapter
 
-这是一个面向 **Zcash** 的浏览器钱包 Adapter。它按照“核心接口 + 钱包实现 + 框架封装”的结构组织，当前钱包实现对接 Noir Wallet 注入的 `window.noirwallet.zcash` Provider。
+A browser wallet adapter built specifically for **Zcash**. The project follows a layered architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. The current wallet implementation integrates with the `window.noirwallet.zcash` provider injected by Noir Wallet.
 
-这里没有复用 NEAR、EVM 或 Solana 的交易模型：
+This implementation does not reuse NEAR, EVM, or Solana transaction models:
 
-- 主账户同时保留 Zcash `transparent` 和 `shielded` 地址。
-- `address` 默认指向 shielded 地址，避免业务层无意中把 t-address 当成隐私地址。
-- 金额始终使用 ZEC 十进制字符串，避免 JavaScript 浮点数精度问题。
-- 发送交易调用 `zcash_sendTransaction`，由钱包完成 UTXO 选择、费用计算、shielded proof、授权与广播。
-- 当前 Noir Provider 没有暴露 PCZT 签名，因此 `signTransaction()` 会明确抛出 `WalletMethodNotSupportedError`，不会假装成 NEAR/EVM 式的序列化交易签名。
-- 消息签名使用 Zcash 透明地址的 secp256k1 key，并支持 Noir 的 `current`、`derived` 和 `legacy_index0` 模式。
+- Each account retains both its Zcash `transparent` and `shielded` addresses.
+- The adapter's primary `address` points to the shielded address by default, preventing applications from accidentally treating a t-address as private.
+- ZEC amounts are represented as decimal strings to avoid JavaScript floating-point precision issues.
+- Transactions are sent through `zcash_sendTransaction`, allowing the wallet to handle UTXO selection, fee calculation, shielded proof generation, authorization, and broadcasting.
+- The current Noir provider does not expose PCZT signing. Calling `signTransaction()` therefore throws `WalletMethodNotSupportedError` instead of pretending that Zcash uses a NEAR- or EVM-style serialized transaction flow.
+- Message signing uses the secp256k1 key associated with a Zcash transparent address and supports Noir's `current`, `derived`, and `legacy_index0` signing modes.
 
-## 包结构
+## Package structure
 
 ```text
 packages/
-├── core/                    # 类型、错误、事件、Base Adapter、WalletStore
-├── wallets/noir-wallet/     # Noir Wallet 的 Zcash Provider 适配
-├── react/                   # WalletProvider 与 useWallet
-└── ui/                      # 纯钱包选择按钮与弹窗
+├── core/                    # Types, errors, events, base adapter, and WalletStore
+├── wallets/noir-wallet/     # Noir Wallet Zcash provider implementation
+├── react/                   # WalletProvider and useWallet
+└── ui/                      # Wallet-selection button and modal only
 ```
 
-## 安装与验证
+## Install and verify
 
 ```bash
 pnpm install
@@ -30,7 +30,7 @@ pnpm test
 pnpm build
 ```
 
-## 原生 TypeScript 使用
+## TypeScript usage
 
 ```ts
 import { WalletStore } from '@noir-adapter/core';
@@ -43,7 +43,8 @@ const noir = new NoirZcashWalletAdapter({
 
 store.registerAdapter(noir);
 
-// 用户点击“连接”后调用；会打开 Noir 授权窗口。
+// Call this after the user clicks Connect. Noir Wallet will display an
+// authorization prompt.
 await store.connect(noir.name);
 
 console.log(noir.shieldedAddress);
@@ -53,7 +54,8 @@ const balance = await noir.getBalance();
 console.log(balance.shielded, balance.available);
 
 const signature = await noir.signMessage('example.com wants you to sign in', {
-  // 身份登录建议使用 derived，减少与主 t-address 的公开关联。
+  // Derived signing is recommended for identity flows because it reduces
+  // public linkage to the user's primary t-address.
   signingMode: 'derived',
 });
 
@@ -65,15 +67,15 @@ const txid = await noir.signAndSendTransaction({
 });
 ```
 
-页面刷新时可静默恢复之前授权过的连接。静默流程只调用 `zcash_getAccounts`，不会触发授权弹窗：
+A previously authorized connection can be restored silently after a page reload. The silent flow only calls `zcash_getAccounts` and never opens an approval prompt:
 
 ```ts
 await store.autoConnect();
 ```
 
-## 开箱即用的钱包选择 UI
+## Ready-to-use wallet selector
 
-UI 层只负责钱包选择：展示钱包名称、图标和安装状态，选择后连接钱包。它不会渲染账户、地址、余额、复制或断开连接界面。
+The UI package is intentionally limited to wallet selection. It displays wallet names, icons, and installation status, then connects the selected wallet. It does not render accounts, addresses, balances, copy actions, or a disconnect panel.
 
 ```tsx
 import { NoirZcashWalletAdapter } from '@noir-adapter/noir-wallet';
@@ -92,23 +94,23 @@ export function App() {
 }
 ```
 
-默认选择行为会调用 `store.connect(walletName)`。如果业务只想取得被选择的钱包、稍后自行连接，可以覆盖 `onSelect`：
+By default, selecting a wallet calls `store.connect(walletName)`. Override `onSelect` if the application only needs the selected adapter and intends to connect later:
 
 ```tsx
 <WalletSelector
   onSelect={async adapter => {
-    console.log('selected wallet:', adapter.name);
+    console.log('Selected wallet:', adapter.name);
   }}
 />
 ```
 
-组件支持覆盖中文文案以及样式变量：
+Labels and CSS variables can be customized:
 
 ```tsx
 <WalletSelector
   labels={{
-    selectWallet: '连接钱包',
-    dialogTitle: '请选择钱包',
+    selectWallet: 'Connect wallet',
+    dialogTitle: 'Choose a wallet',
   }}
 />
 ```
@@ -120,9 +122,9 @@ export function App() {
 }
 ```
 
-也可以分别使用受控的 `WalletSelectorButton` 和 `WalletSelectorModal`，将弹窗开关交给业务管理。
+`WalletSelectorButton` and `WalletSelectorModal` are also exported separately for applications that need to control the modal state themselves.
 
-## React 状态层使用
+## React state bindings
 
 ```tsx
 import { NoirZcashWalletAdapter } from '@noir-adapter/noir-wallet';
@@ -178,11 +180,11 @@ function WalletPanel() {
 }
 ```
 
-`adapters` 数组应保持引用稳定（放在组件外或用 `useMemo` 创建），否则 React 会把它视作一组新钱包并重新注册。
+Keep the `adapters` array reference stable by defining it outside the component or creating it with `useMemo`. Passing a new array on every render causes React to treat it as a new set of wallets and register the adapters again.
 
-## 事件
+## Events
 
-Adapter 统一提供：
+Every adapter exposes the following events:
 
 - `connect`
 - `disconnect`
@@ -193,19 +195,19 @@ Adapter 统一提供：
 
 ```ts
 noir.on('accountChanged', ({ shielded, transparent, accounts }) => {
-  // accounts 包含本次授权的全部 Zcash wallet/account。
+  // accounts contains every Zcash wallet/account authorized by the user.
 });
 ```
 
-## Zcash 特有注意事项
+## Zcash-specific considerations
 
-1. `shielded` 字段由钱包返回，可能是 Unified Address 或钱包当前支持的 shielded 地址格式；DApp 不应只靠字符串前缀猜测 receiver 类型。
-2. memo 最多 512 UTF-8 bytes，并且只有 shielded 接收方能获得私密 memo。
-3. `fundingSource: 'transparent'` 会暴露并可能关联所选 UTXO；隐私优先场景应使用 `shielded`。
-4. `available` 比简单的余额减固定手续费更适合作为最大可发送金额；精确 send-max 应调用 `getMaxTransfer()`。
-5. 主网和测试网由不同的钱包构建版本决定。Adapter 的 `network` 配置用于 DApp 状态与校验，不会请求钱包切链。
+1. The wallet provides the `shielded` value. It may be a Unified Address or another shielded address format supported by the wallet. Applications should not infer receiver capabilities from the string prefix alone.
+2. A memo is limited to 512 UTF-8 bytes, and only a shielded recipient can receive a private memo.
+3. `fundingSource: 'transparent'` reveals and may link the selected UTXOs. Privacy-first applications should use `shielded`.
+4. `available` is more accurate for a maximum payment than subtracting a fixed fee from the balance. Use `getMaxTransfer()` for an exact send-max estimate.
+5. Mainnet and testnet are distributed as separate wallet builds. The adapter's `network` option controls application state and validation; it does not ask the wallet to switch networks.
 
-## Provider RPC 映射
+## Provider RPC mapping
 
 | Adapter API | Noir Zcash RPC |
 | --- | --- |
@@ -221,6 +223,6 @@ noir.on('accountChanged', ({ shielded, transparent, accounts }) => {
 | `getTransactionHistory()` | `zcash_getTransactionHistory` |
 | `disconnect()` | Provider `disconnect()` / `zcash_disconnect` |
 
-## 安全建议
+## Security recommendations
 
-用于登录的消息应由服务端生成并校验，至少包含域名、用途、nonce、签发时间和过期时间。不要让用户签署含义不清晰的任意文本；不要把 shielded 地址、授权账户数组或余额写入分析日志。
+Authentication messages should be generated and verified by the server. At minimum, include the domain, intended action, nonce, issued-at time, and expiration time. Never ask users to sign ambiguous text, and never send shielded addresses, authorized account lists, or balances to analytics services.
