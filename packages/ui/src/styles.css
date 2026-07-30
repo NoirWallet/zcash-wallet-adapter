@@ -1,0 +1,328 @@
+:root {
+  --nzwa-accent: #f4b728;
+  --nzwa-accent-strong: #d89700;
+  --nzwa-surface: #ffffff;
+  --nzwa-surface-subtle: #f7f7f5;
+  --nzwa-text: #171714;
+  --nzwa-text-muted: #6d6d65;
+  --nzwa-border: #e6e5df;
+  --nzwa-danger: #b42318;
+  --nzwa-shadow: 0 24px 80px rgb(20 20 16 / 22%);
+  --nzwa-radius: 18px;
+  --nzwa-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.nzwa-selector-button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--nzwa-accent) 44%, var(--nzwa-border));
+  border-radius: 12px;
+  background: var(--nzwa-text);
+  color: #fff;
+  box-shadow: 0 4px 14px rgb(17 17 17 / 12%);
+  font: 600 14px/1 var(--nzwa-font);
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    border-color 150ms ease;
+}
+
+.nzwa-selector-button:hover:not(:disabled) {
+  border-color: var(--nzwa-accent);
+  box-shadow: 0 7px 20px rgb(17 17 17 / 18%);
+  transform: translateY(-1px);
+}
+
+.nzwa-selector-button:focus-visible,
+.nzwa-modal__close:focus-visible,
+.nzwa-wallet-row__select:focus-visible,
+.nzwa-wallet-row__install:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--nzwa-accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.nzwa-selector-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.nzwa-selector-button__mark {
+  color: var(--nzwa-accent);
+  font-size: 20px;
+}
+
+.nzwa-selector-button__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.nzwa-selector-button__name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nzwa-selector-button__action {
+  color: #b9b9b2;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.nzwa-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.nzwa-modal-backdrop {
+  position: fixed;
+  z-index: 2147483000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(12 12 10 / 58%);
+  backdrop-filter: blur(8px);
+  animation: nzwa-fade-in 160ms ease-out;
+}
+
+.nzwa-modal {
+  width: min(100%, 420px);
+  overflow: hidden;
+  border: 1px solid var(--nzwa-border);
+  border-radius: var(--nzwa-radius);
+  background: var(--nzwa-surface);
+  box-shadow: var(--nzwa-shadow);
+  color: var(--nzwa-text);
+  font-family: var(--nzwa-font);
+  animation: nzwa-modal-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nzwa-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 24px 18px;
+}
+
+.nzwa-modal__title {
+  margin: 0;
+  color: var(--nzwa-text);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.nzwa-modal__description {
+  margin: 7px 0 0;
+  color: var(--nzwa-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.nzwa-modal__close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: var(--nzwa-surface-subtle);
+  color: var(--nzwa-text-muted);
+  cursor: pointer;
+}
+
+.nzwa-modal__close:hover {
+  color: var(--nzwa-text);
+}
+
+.nzwa-wallet-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px 18px;
+}
+
+.nzwa-wallet-list__empty {
+  margin: 0;
+  padding: 28px 16px;
+  color: var(--nzwa-text-muted);
+  text-align: center;
+}
+
+.nzwa-wallet-row {
+  position: relative;
+}
+
+.nzwa-wallet-row__select {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  align-items: center;
+  gap: 13px;
+  padding: 11px 14px;
+  border: 1px solid var(--nzwa-border);
+  border-radius: 14px;
+  background: var(--nzwa-surface-subtle);
+  color: var(--nzwa-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.nzwa-wallet-row__select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--nzwa-accent) 64%, var(--nzwa-border));
+  background: color-mix(in srgb, var(--nzwa-accent) 7%, var(--nzwa-surface));
+  transform: translateY(-1px);
+}
+
+.nzwa-wallet-row__select:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.nzwa-wallet-row__icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgb(17 17 17 / 12%);
+}
+
+.nzwa-wallet-row__content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 5px;
+}
+
+.nzwa-wallet-row__name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nzwa-wallet-row__status {
+  font-size: 12px;
+}
+
+.nzwa-wallet-row__status--connected,
+.nzwa-wallet-row__status--installed {
+  color: #16845b;
+}
+
+.nzwa-wallet-row__status--missing {
+  color: var(--nzwa-text-muted);
+}
+
+.nzwa-wallet-row__status--error {
+  color: var(--nzwa-danger);
+}
+
+.nzwa-wallet-row__install {
+  position: absolute;
+  right: 45px;
+  bottom: 12px;
+  z-index: 1;
+  color: var(--nzwa-accent-strong);
+  font: 600 12px/1 var(--nzwa-font);
+  text-decoration: none;
+}
+
+.nzwa-modal__error {
+  margin: -4px 16px 18px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--nzwa-danger) 24%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--nzwa-danger) 7%, var(--nzwa-surface));
+  color: var(--nzwa-danger);
+  font: 500 12px/1.45 var(--nzwa-font);
+}
+
+.nzwa-spinner {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: var(--nzwa-accent-strong);
+  stroke-dasharray: 28 16;
+  stroke-linecap: round;
+  stroke-width: 2;
+  animation: nzwa-spin 700ms linear infinite;
+}
+
+@keyframes nzwa-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nzwa-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes nzwa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nzwa-surface: #181816;
+    --nzwa-surface-subtle: #22221f;
+    --nzwa-text: #f4f3ed;
+    --nzwa-text-muted: #aaa99f;
+    --nzwa-border: #35352f;
+    --nzwa-shadow: 0 28px 90px rgb(0 0 0 / 55%);
+  }
+}
+
+@media (max-width: 520px) {
+  .nzwa-modal-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .nzwa-modal {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 22px 22px 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nzwa-modal-backdrop,
+  .nzwa-modal,
+  .nzwa-spinner {
+    animation: none;
+  }
+
+  .nzwa-selector-button,
+  .nzwa-wallet-row__select {
+    transition: none;
+  }
+}
