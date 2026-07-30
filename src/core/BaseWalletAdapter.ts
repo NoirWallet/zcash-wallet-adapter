@@ -119,6 +119,14 @@ export abstract class BaseZcashWalletAdapter
     this.emit('error', error);
   }
 
+  /**
+   * Reports an operation error without changing connection state. A rejected
+   * signature or transaction is not a wallet disconnect.
+   */
+  protected reportError(error: Error): void {
+    this.emit('error', error);
+  }
+
   abstract detect(): Promise<boolean>;
   abstract connect(options?: ConnectOptions): Promise<ZcashConnection>;
   abstract disconnect(): Promise<void>;

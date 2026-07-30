@@ -21,43 +21,6 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7
 
-  packages/core: {}
-
-  packages/react:
-    dependencies:
-      '@noir-adapter/core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      '@types/react':
-        specifier: ^19.1.8
-        version: 19.2.17
-      react:
-        specifier: ^19.1.0
-        version: 19.2.8
-
-  packages/ui:
-    dependencies:
-      '@noir-adapter/core':
-        specifier: workspace:*
-        version: link:../core
-      '@noir-adapter/react':
-        specifier: workspace:*
-        version: link:../react
-    devDependencies:
-      '@types/react':
-        specifier: ^19.1.8
-        version: 19.2.17
-      react:
-        specifier: ^19.1.0
-        version: 19.2.8
-
-  packages/wallets/noir-wallet:
-    dependencies:
-      '@noir-adapter/core':
-        specifier: workspace:*
-        version: link:../../core
-
 packages:
 
   '@esbuild/aix-ppc64@0.28.1':

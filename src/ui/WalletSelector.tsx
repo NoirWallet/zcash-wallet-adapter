@@ -10,8 +10,8 @@ import {
 import {
   WalletReadyState,
   type ZcashWalletAdapter,
-} from '@noir-adapter/core';
-import { useWallet } from '@noir-adapter/react';
+} from '../core/index.js';
+import { useWallet } from '../react/index.js';
 
 export interface WalletSelectorLabels {
   selectWallet: string;

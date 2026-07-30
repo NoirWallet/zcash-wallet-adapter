@@ -2,8 +2,9 @@ import {
   UserRejectedError,
   WalletInvalidInputError,
   WalletMethodNotSupportedError,
+  WalletReadyState,
   WalletStore,
-} from '@noir-adapter/core';
+} from '../../core/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NoirZcashWalletAdapter } from './NoirZcashWalletAdapter.js';
@@ -148,6 +149,7 @@ describe('NoirZcashWalletAdapter', () => {
   it('sends Zcash payment requests and rejects invalid amounts or oversized memos', async () => {
     const provider = new MockProvider();
     const adapter = new NoirZcashWalletAdapter({ provider });
+    await adapter.connect();
 
     await expect(
       adapter.signAndSendTransaction({
@@ -157,6 +159,8 @@ describe('NoirZcashWalletAdapter', () => {
         fundingSource: 'shielded',
       }),
     ).resolves.toBe('txid-123');
+    expect(adapter.isConnected).toBe(true);
+    expect(adapter.readyState).toBe(WalletReadyState.Connected);
 
     await expect(
       adapter.sendTransaction({ to: 'u1Recipient', amount: '0.000000001' }),
@@ -164,6 +168,33 @@ describe('NoirZcashWalletAdapter', () => {
     await expect(
       adapter.sendTransaction({ to: 'u1Recipient', amount: '1', memo: '界'.repeat(171) }),
     ).rejects.toBeInstanceOf(WalletInvalidInputError);
+  });
+
+  it('keeps the wallet connected when a transaction is rejected', async () => {
+    const provider = new MockProvider();
+    const adapter = new NoirZcashWalletAdapter({ provider });
+    const errorListener = vi.fn();
+    const disconnectListener = vi.fn();
+    adapter.on('error', errorListener);
+    adapter.on('disconnect', disconnectListener);
+    await adapter.connect();
+
+    provider.rejectNext = Object.assign(new Error('Transaction rejected'), {
+      code: 4001,
+    });
+    await expect(
+      adapter.sendTransaction({
+        to: 'u1Recipient',
+        amount: '0.1',
+        fundingSource: 'shielded',
+      }),
+    ).rejects.toBeInstanceOf(UserRejectedError);
+
+    expect(errorListener).toHaveBeenCalledOnce();
+    expect(disconnectListener).not.toHaveBeenCalled();
+    expect(adapter.readyState).toBe(WalletReadyState.Connected);
+    expect(adapter.isConnected).toBe(true);
+    expect(adapter.shieldedAddress).toBe('u1PrimaryShieldedAddress');
   });
 
   it('fails explicitly when a dApp requests unsupported PCZT signing', async () => {
@@ -205,6 +236,28 @@ describe('NoirZcashWalletAdapter', () => {
     });
     expect(provider.listeners.get('accountsChanged')?.size).toBe(1);
   });
+
+  it('disconnects only for explicit null or disconnect events', async () => {
+    const provider = new MockProvider();
+    const adapter = new NoirZcashWalletAdapter({ provider });
+    const errorListener = vi.fn();
+    const disconnectListener = vi.fn();
+    adapter.on('error', errorListener);
+    adapter.on('disconnect', disconnectListener);
+    await adapter.connect();
+
+    provider.emit('accountsChanged', undefined);
+
+    expect(errorListener).toHaveBeenCalledOnce();
+    expect(disconnectListener).not.toHaveBeenCalled();
+    expect(adapter.isConnected).toBe(true);
+
+    provider.emit('accountsChanged', null);
+
+    expect(disconnectListener).toHaveBeenCalledOnce();
+    expect(adapter.isConnected).toBe(false);
+    expect(adapter.connection).toBeNull();
+  });
 });
 
 describe('WalletStore', () => {
@@ -234,5 +287,29 @@ describe('WalletStore', () => {
     provider.connected = true;
     await expect(store.autoConnect()).resolves.toBe(adapter);
     expect(provider.requests.at(-2)?.method).toBe('zcash_getAccounts');
+  });
+
+  it('keeps the connected store snapshot after a transaction error', async () => {
+    const provider = new MockProvider();
+    const adapter = new NoirZcashWalletAdapter({ provider });
+    const store = new WalletStore({ storage: null });
+    store.registerAdapter(adapter);
+    await store.connect(adapter.name);
+
+    provider.rejectNext = Object.assign(new Error('Transaction rejected'), {
+      code: 4001,
+    });
+    await expect(
+      store.requireCurrentAdapter().signAndSendTransaction({
+        to: 'u1Recipient',
+        amount: '0.1',
+      }),
+    ).rejects.toBeInstanceOf(UserRejectedError);
+
+    expect(store.getSnapshot()).toMatchObject({
+      currentAdapter: adapter,
+      isConnected: true,
+      address: 'u1PrimaryShieldedAddress',
+    });
   });
 });

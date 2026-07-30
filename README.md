@@ -1,6 +1,6 @@
 # Noir Zcash Wallet Adapter
 
-A browser wallet adapter built specifically for **Zcash**. The project follows a layered architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. The current wallet implementation integrates with the `window.noirwallet.zcash` provider injected by Noir Wallet.
+A browser wallet adapter built specifically for **Zcash**. The project follows a layered internal architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. All layers are distributed as one `@noir-wallet/adapter` package. The current wallet implementation integrates with the `window.noirwallet.zcash` provider injected by Noir Wallet.
 
 This implementation does not reuse NEAR, EVM, or Solana transaction models:
 
@@ -11,17 +11,23 @@ This implementation does not reuse NEAR, EVM, or Solana transaction models:
 - The current Noir provider does not expose PCZT signing. Calling `signTransaction()` therefore throws `WalletMethodNotSupportedError` instead of pretending that Zcash uses a NEAR- or EVM-style serialized transaction flow.
 - Message signing uses the secp256k1 key associated with a Zcash transparent address and supports Noir's `current`, `derived`, and `legacy_index0` signing modes.
 
-## Package structure
+## Internal structure
 
 ```text
-packages/
+src/
 ├── core/                    # Types, errors, events, base adapter, and WalletStore
 ├── wallets/noir-wallet/     # Noir Wallet Zcash provider implementation
 ├── react/                   # WalletProvider and useWallet
 └── ui/                      # Wallet-selection button and modal only
 ```
 
-## Install and verify
+These directories are implementation layers, not separate npm packages. Applications install a single dependency:
+
+```bash
+pnpm add @noir-wallet/adapter
+```
+
+To develop and verify this repository:
 
 ```bash
 pnpm install
@@ -33,8 +39,10 @@ pnpm build
 ## TypeScript usage
 
 ```ts
-import { WalletStore } from '@noir-adapter/core';
-import { NoirZcashWalletAdapter } from '@noir-adapter/noir-wallet';
+import {
+  NoirZcashWalletAdapter,
+  WalletStore,
+} from '@noir-wallet/adapter';
 
 const store = new WalletStore();
 const noir = new NoirZcashWalletAdapter({
@@ -78,42 +86,50 @@ await store.autoConnect();
 The UI package is intentionally limited to wallet selection. It displays wallet names, icons, and installation status, then connects the selected wallet. It does not render accounts, addresses, balances, copy actions, or a disconnect panel.
 
 ```tsx
-import { NoirZcashWalletAdapter } from '@noir-adapter/noir-wallet';
-import { WalletProvider } from '@noir-adapter/react';
-import { WalletSelector } from '@noir-adapter/ui';
-import '@noir-adapter/ui/styles.css';
+import {
+  NoirZcashWalletAdapter,
+  WalletProvider,
+} from '@noir-wallet/adapter';
+import '@noir-wallet/adapter/styles.css';
 
 const adapters = [new NoirZcashWalletAdapter({ network: 'mainnet' })];
 
 export function App() {
   return (
     <WalletProvider adapters={adapters} autoConnect>
-      <WalletSelector />
+      <AppContent />
     </WalletProvider>
   );
 }
 ```
 
-By default, selecting a wallet calls `store.connect(walletName)`. Override `onSelect` if the application only needs the selected adapter and intends to connect later:
+The UI-ready `WalletProvider` renders `WalletSelector` automatically. The application does not need to import or mount the selector separately. By default, selecting a wallet calls `store.connect(walletName)`.
+
+Pass `walletSelectorProps` to customize the built-in selector:
 
 ```tsx
-<WalletSelector
-  onSelect={async adapter => {
-    console.log('Selected wallet:', adapter.name);
+<WalletProvider
+  adapters={adapters}
+  walletSelectorProps={{
+    labels: {
+      selectWallet: 'Connect wallet',
+      dialogTitle: 'Choose a wallet',
+    },
   }}
-/>
+>
+  <AppContent />
+</WalletProvider>
 ```
 
-Labels and CSS variables can be customized:
+The built-in selector can be disabled when a page does not need wallet-selection UI:
 
 ```tsx
-<WalletSelector
-  labels={{
-    selectWallet: 'Connect wallet',
-    dialogTitle: 'Choose a wallet',
-  }}
-/>
+<WalletProvider adapters={adapters} showWalletSelector={false}>
+  <AppContent />
+</WalletProvider>
 ```
+
+CSS variables can be customized:
 
 ```css
 :root {
@@ -122,13 +138,18 @@ Labels and CSS variables can be customized:
 }
 ```
 
-`WalletSelectorButton` and `WalletSelectorModal` are also exported separately for applications that need to control the modal state themselves.
+`WalletSelector`, `WalletSelectorButton`, and `WalletSelectorModal` remain available as separate exports for applications that need full control over selector placement or modal state.
 
-## React state bindings
+## Headless React state bindings
+
+Use the `@noir-wallet/adapter/react` subpath when the application needs state management without any built-in UI. This is a subpath of the same installed package, not another dependency.
 
 ```tsx
-import { NoirZcashWalletAdapter } from '@noir-adapter/noir-wallet';
-import { WalletProvider, useWallet } from '@noir-adapter/react';
+import { NoirZcashWalletAdapter } from '@noir-wallet/adapter';
+import {
+  WalletProvider,
+  useWallet,
+} from '@noir-wallet/adapter/react';
 
 const adapters = [new NoirZcashWalletAdapter({ network: 'mainnet' })];
 
@@ -198,6 +219,8 @@ noir.on('accountChanged', ({ shielded, transparent, accounts }) => {
   // accounts contains every Zcash wallet/account authorized by the user.
 });
 ```
+
+Transaction and signing failures emit `error` without clearing the active connection. The adapter only enters the disconnected state after an explicit provider `disconnect` event, an `accountsChanged` event carrying `null`, or an application call to `disconnect()`.
 
 ## Zcash-specific considerations
 

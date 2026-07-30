@@ -15,7 +15,7 @@ import {
   type ZcashSendTransactionRequest,
   type ZcashSignMessageOptions,
   type ZcashWalletAdapter,
-} from '@noir-adapter/core';
+} from '../core/index.js';
 
 export interface WalletProviderProps extends PropsWithChildren {
   adapters: readonly ZcashWalletAdapter[];

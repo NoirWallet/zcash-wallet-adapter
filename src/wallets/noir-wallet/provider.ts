@@ -4,7 +4,7 @@ import type {
   ZcashAddress,
   ZcashBalance,
   ZcashConnection,
-} from '@noir-adapter/core';
+} from '../../core/index.js';
 
 export interface NoirRequestArguments {
   method: string;

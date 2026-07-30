@@ -6,6 +6,7 @@ import {
   WalletMethodNotSupportedError,
   WalletNotConnectedError,
   WalletNotFoundError,
+  WalletProviderError,
   WalletReadyState,
   type BrowserWindowLike,
   type ConnectOptions,
@@ -22,7 +23,7 @@ import {
   type ZcashSignMessageOptions,
   type ZcashSignMessageResult,
   type ZcashTransactionHistoryEntry,
-} from '@noir-adapter/core';
+} from '../../core/index.js';
 
 import {
   normalizeConnection,
@@ -80,8 +81,17 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
 
   private readonly handleAccountsChanged = (...args: unknown[]): void => {
     const addresses = args[0];
-    if (!isAddressResult(addresses)) {
+    if (addresses === null) {
       this.setDisconnected();
+      return;
+    }
+    if (!isAddressResult(addresses)) {
+      this.reportError(
+        new WalletProviderError(
+          'Ignored an invalid accountsChanged payload from Noir Wallet',
+          addresses,
+        ),
+      );
       return;
     }
 
@@ -144,6 +154,8 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
       const normalized = normalizeProviderError(error, 'Failed to connect Noir Wallet');
       if (normalized instanceof WalletNotConnectedError) {
         this.setDisconnected();
+      } else if (this.isConnected) {
+        this.reportError(normalized);
       } else {
         this.setError(normalized);
       }
@@ -165,7 +177,7 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
       }
     } catch (error) {
       const normalized = normalizeProviderError(error, 'Failed to disconnect Noir Wallet');
-      this.setError(normalized);
+      this.reportError(normalized);
       throw normalized;
     } finally {
       this.unbindProviderEvents();
@@ -298,7 +310,7 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
       });
     } catch (error) {
       const normalized = normalizeProviderError(error, `Noir Wallet request failed: ${method}`);
-      this.setError(normalized);
+      this.reportError(normalized);
       throw normalized;
     }
   }
@@ -348,7 +360,7 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
       this.setAccountChanged(connection, key?.publicKey ?? null);
     } catch (error) {
       const normalized = normalizeProviderError(error, 'Failed to refresh Zcash account');
-      this.setError(normalized);
+      this.reportError(normalized);
     }
   }
 }

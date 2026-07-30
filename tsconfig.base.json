@@ -4,6 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -12,13 +13,6 @@
     "declarationMap": true,
     "sourceMap": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true,
-    "baseUrl": ".",
-    "paths": {
-      "@noir-adapter/core": ["packages/core/src/index.ts"],
-      "@noir-adapter/noir-wallet": ["packages/wallets/noir-wallet/src/index.ts"],
-      "@noir-adapter/react": ["packages/react/src/index.ts"],
-      "@noir-adapter/ui": ["packages/ui/src/index.ts"]
-    }
+    "verbatimModuleSyntax": true
   }
 }
