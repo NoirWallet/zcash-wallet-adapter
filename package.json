@@ -2,7 +2,9 @@
   "name": "@noir-wallet/adapter",
   "version": "0.1.0",
   "type": "module",
-  "sideEffects": ["./styles.css"],
+  "sideEffects": [
+    "./styles.css"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -26,9 +28,21 @@
       "types": "./dist/wallets/noir-wallet/index.d.ts",
       "import": "./dist/wallets/noir-wallet/index.js"
     },
+    "./cross-chain-dex": {
+      "types": "./dist/cross-chain-dex/index.d.ts",
+      "import": "./dist/cross-chain-dex/index.js"
+    },
+    "./cross-chain-lending": {
+      "types": "./dist/cross-chain-lending/index.d.ts",
+      "import": "./dist/cross-chain-lending/index.js"
+    },
     "./styles.css": "./styles.css"
   },
-  "files": ["dist", "styles.css", "README.md"],
+  "files": [
+    "dist",
+    "styles.css",
+    "README.md"
+  ],
   "packageManager": "pnpm@10.33.4",
   "scripts": {
     "build": "tsc -b",
@@ -39,6 +53,10 @@
   },
   "peerDependencies": {
     "react": ">=18"
+  },
+  "dependencies": {
+    "@rhea-finance/cross-chain-aggregation-dex": "2.0.3",
+    "@rhea-finance/cross-chain-sdk": "0.1.19"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",

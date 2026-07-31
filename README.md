@@ -18,7 +18,9 @@ src/
 ├── core/                    # Types, errors, events, base adapter, and WalletStore
 ├── wallets/noir-wallet/     # Noir Wallet Zcash provider implementation
 ├── react/                   # WalletProvider and useWallet
-└── ui/                      # Wallet-selection button and modal only
+├── ui/                      # Wallet-selection button and modal only
+├── cross-chain-dex/         # Optional RHEA Cross-Chain DEX bridge
+└── cross-chain-lending/     # Lazy RHEA lending SDK and Zcash bridge
 ```
 
 These directories are implementation layers, not separate npm packages. Applications install a single dependency:
@@ -81,6 +83,164 @@ A previously authorized connection can be restored silently after a page reload.
 await store.autoConnect();
 ```
 
+## Optional RHEA Cross-Chain DEX integration
+
+The RHEA integration is available through an optional import path rather than
+the default adapter entry point. Applications install only the adapter package;
+its internal dependencies include the RHEA SDK:
+
+```bash
+pnpm add @noir-wallet/adapter
+```
+
+Import the bridge through its dedicated subpath:
+
+```ts
+import { NoirZcashWalletAdapter } from '@noir-wallet/adapter';
+import {
+  createNoirSwapClient,
+  parseUnits,
+  type AssetRef,
+} from '@noir-wallet/adapter/cross-chain-dex';
+
+const noir = new NoirZcashWalletAdapter({ network: 'mainnet' });
+await noir.connect();
+
+const client = createNoirSwapClient({
+  baseUrl: 'https://api.rhea.finance',
+  wallet: noir,
+});
+
+// Use the exact asset identifiers returned by RHEA's token metadata API.
+declare const zec: AssetRef;
+declare const destinationAsset: AssetRef;
+declare const destinationAddress: string;
+
+const quote = await client.quote({
+  fromChain: 'zcash',
+  toChain: destinationAsset.chain,
+  tokenIn: zec,
+  tokenOut: destinationAsset,
+  amountIn: parseUnits('0.1', zec.decimals ?? 8),
+  slippageBps: 50,
+  sender: noir.transparentAddress!,
+  recipient: destinationAddress,
+});
+
+const result = await client.swap({
+  quote,
+  waitFor: 'submitted',
+});
+
+console.log(result.txHash);
+```
+
+The bridge converts RHEA's base-unit ZEC amount into the decimal string
+expected by Noir Wallet and funds the deposit from the shielded balance by
+default. Pass `zcash: { fundingSource: 'transparent' }` to
+`createNoirSwapClient()` only when that privacy trade-off is intentional.
+
+`waitFor: 'submitted'` works with the current Noir provider. To use
+`'source-confirmed'` or `'completed'`, supply a confirmation implementation:
+
+```ts
+const client = createNoirSwapClient({
+  baseUrl: 'https://api.rhea.finance',
+  wallet: noir,
+  zcash: {
+    waitForTransaction: async (txHash, { signal }) => {
+      const receipt = await waitForZcashReceipt(txHash, signal);
+      return {
+        status: receipt.confirmed ? 'confirmed' : 'failed',
+        raw: receipt,
+      };
+    },
+  },
+});
+```
+
+RHEA's Zcash executor sends to the transparent deposit address returned by its
+build API, so that address must start with a valid mainnet `t1`/`t3` prefix or
+testnet `tm`/`t2` prefix. This restriction applies to the cross-chain deposit
+step only; normal Noir wallet transfers may still use supported Unified or
+shielded recipients.
+
+`@noir-wallet/adapter` does not re-export this bridge from its root entry.
+Although the RHEA SDK is installed transitively, bundlers do not include it in
+the application bundle unless the application imports
+`@noir-wallet/adapter/cross-chain-dex`. The RHEA package also declares
+`sideEffects: false`, allowing unused exports inside the integration to be
+removed by tree-shaking.
+
+## RHEA cross-chain lending integration
+
+The RHEA cross-chain lending SDK is also included as an internal dependency.
+Applications still install only one package:
+
+```bash
+pnpm add @noir-wallet/adapter
+```
+
+Use the dedicated lending subpath to connect the SDK to Noir Wallet:
+
+```ts
+import { NoirZcashWalletAdapter } from '@noir-wallet/adapter';
+import {
+  createNoirCrossChainLendingBridge,
+} from '@noir-wallet/adapter/cross-chain-lending';
+
+const noir = new NoirZcashWalletAdapter({ network: 'mainnet' });
+await noir.connect();
+
+const lending = createNoirCrossChainLendingBridge(noir);
+
+// The derived Noir public key is used as the Zcash MCA identity.
+const mcaId = await lending.getMcaByWallet();
+
+// Legacy RHEA Zcash MCA creation flow: request a deposit address and submit
+// the ZEC transfer through Noir Wallet.
+const deposit = await lending.createMcaDeposit({
+  accountManagerId: 'multica.near',
+  amount: '0.1',
+});
+
+console.log(deposit.txHash);
+
+const status = await lending.getZcashDepositStatus(
+  deposit.depositAddress,
+);
+console.log(status?.mca_id, status?.status);
+```
+
+Deposit transfers use the shielded balance by default. To make the funding
+source explicit:
+
+```ts
+const lending = createNoirCrossChainLendingBridge(noir, {
+  fundingSource: 'transparent',
+});
+```
+
+The bridge also exposes the complete RHEA SDK for lending views, quote
+preparation, health-factor calculations, MCA operations, and relayer flows:
+
+```ts
+const sdk = await lending.loadSdk();
+const account = await sdk.batchViews(mcaId ?? undefined);
+const assets = await sdk.getAssetsDetail();
+```
+
+`@rhea-finance/cross-chain-sdk` is a large multi-chain module distributed
+through a single JavaScript entry. The adapter therefore loads it with a
+dynamic import. Importing `@noir-wallet/adapter` or
+`@noir-wallet/adapter/cross-chain-dex` does not load the lending SDK; calling
+`loadSdk()` or a lending bridge method creates the on-demand SDK chunk.
+
+RHEA's Zcash deposit endpoints require a transparent address. The bridge
+validates mainnet `t1`/`t3` and testnet `tm`/`t2` addresses before asking Noir
+Wallet to send funds. It does not apply this restriction to ordinary wallet
+transfers.
+
 ## Ready-to-use wallet selector
 
 The UI package is intentionally limited to wallet selection. It displays wallet names, icons, and installation status, then connects the selected wallet. It does not render accounts, addresses, balances, copy actions, or a disconnect panel.
@@ -104,6 +264,27 @@ export function App() {
 ```
 
 The UI-ready `WalletProvider` renders `WalletSelector` automatically. The application does not need to import or mount the selector separately. By default, selecting a wallet calls `store.connect(walletName)`.
+
+The selector uses the light theme by default:
+
+```tsx
+<WalletProvider adapters={adapters}>
+  <AppContent />
+</WalletProvider>
+```
+
+Set `theme="dark"` to use the dark theme:
+
+```tsx
+<WalletProvider adapters={adapters} theme="dark">
+  <AppContent />
+</WalletProvider>
+```
+
+The same `theme: 'light' | 'dark'` option is available on
+`WalletSelector`, `WalletSelectorButton`, and `WalletSelectorModal` when they
+are rendered separately. The theme is explicit and does not change
+automatically with the operating-system color scheme.
 
 Pass `walletSelectorProps` to customize the built-in selector:
 
@@ -134,7 +315,12 @@ CSS variables can be customized:
 ```css
 :root {
   --nzwa-accent: #f4b728;
-  --nzwa-radius: 18px;
+  --nzwa-radius: 24px;
+}
+
+[data-nzwa-theme='light'] {
+  --nzwa-surface: #ffffff;
+  --nzwa-text: #18181a;
 }
 ```
 

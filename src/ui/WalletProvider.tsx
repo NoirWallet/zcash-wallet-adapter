@@ -8,6 +8,7 @@ import {
 import {
   WalletSelector,
   type WalletSelectorProps,
+  type WalletSelectorTheme,
 } from './WalletSelector.js';
 
 export interface WalletProviderProps
@@ -23,6 +24,12 @@ export interface WalletProviderProps
    * Customizes the wallet selector rendered by this provider.
    */
   walletSelectorProps?: WalletSelectorProps;
+  /**
+   * Color mode for the built-in wallet selector.
+   *
+   * @default "light"
+   */
+  theme?: WalletSelectorTheme;
 }
 
 /**
@@ -35,12 +42,18 @@ export function WalletProvider({
   children,
   showWalletSelector = true,
   walletSelectorProps,
+  theme = 'light',
   ...providerProps
 }: WalletProviderProps) {
+  const selectorProps = {
+    ...walletSelectorProps,
+    theme: walletSelectorProps?.theme ?? theme,
+  };
+
   return (
     <HeadlessWalletProvider {...providerProps}>
       {showWalletSelector && (
-        <WalletSelector {...(walletSelectorProps ?? {})} />
+        <WalletSelector {...selectorProps} />
       )}
       {children}
     </HeadlessWalletProvider>

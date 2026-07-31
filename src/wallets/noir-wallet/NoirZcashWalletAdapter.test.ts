@@ -166,7 +166,11 @@ describe('NoirZcashWalletAdapter', () => {
       adapter.sendTransaction({ to: 'u1Recipient', amount: '0.000000001' }),
     ).rejects.toBeInstanceOf(WalletInvalidInputError);
     await expect(
-      adapter.sendTransaction({ to: 'u1Recipient', amount: '1', memo: '界'.repeat(171) }),
+      adapter.sendTransaction({
+        to: 'u1Recipient',
+        amount: '1',
+        memo: '\u754c'.repeat(171),
+      }),
     ).rejects.toBeInstanceOf(WalletInvalidInputError);
   });
 

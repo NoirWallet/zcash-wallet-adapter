@@ -13,6 +13,8 @@ import {
 } from '../core/index.js';
 import { useWallet } from '../react/index.js';
 
+export type WalletSelectorTheme = 'light' | 'dark';
+
 export interface WalletSelectorLabels {
   selectWallet: string;
   changeWallet: string;
@@ -23,22 +25,24 @@ export interface WalletSelectorLabels {
   connected: string;
   notDetected: string;
   error: string;
+  connecting: string;
   installing: string;
   empty: string;
 }
 
 const defaultLabels: WalletSelectorLabels = {
-  selectWallet: '选择钱包',
-  changeWallet: '切换钱包',
-  dialogTitle: '选择 Zcash 钱包',
-  dialogDescription: '选择一个钱包以连接到此应用',
-  close: '关闭',
-  installed: '已安装',
-  connected: '已连接',
-  notDetected: '未检测到',
-  error: '可重试',
-  installing: '安装',
-  empty: '没有可用的钱包',
+  selectWallet: 'Select wallet',
+  changeWallet: 'Change wallet',
+  dialogTitle: 'Choose a Zcash wallet',
+  dialogDescription: 'Select a wallet to connect to this application',
+  close: 'Close',
+  installed: 'Installed',
+  connected: 'Connected',
+  notDetected: 'Not detected',
+  error: 'Retry',
+  connecting: 'Connecting…',
+  installing: 'Install',
+  empty: 'No wallets available',
 };
 
 export interface WalletSelectorButtonProps
@@ -46,12 +50,19 @@ export interface WalletSelectorButtonProps
   onClick: () => void;
   adapter?: ZcashWalletAdapter | null;
   labels?: Partial<WalletSelectorLabels>;
+  /**
+   * Visual color mode.
+   *
+   * @default "light"
+   */
+  theme?: WalletSelectorTheme;
 }
 
 export function WalletSelectorButton({
   onClick,
   adapter,
   labels: labelOverrides,
+  theme = 'light',
   className,
   ...buttonProps
 }: WalletSelectorButtonProps) {
@@ -61,6 +72,7 @@ export function WalletSelectorButton({
     <button
       type="button"
       {...buttonProps}
+      data-nzwa-theme={theme}
       className={joinClassNames('nzwa-selector-button', className)}
       aria-haspopup="dialog"
       onClick={onClick}
@@ -94,6 +106,12 @@ export interface WalletSelectorModalProps {
   onSelect?: (adapter: ZcashWalletAdapter) => void | Promise<void>;
   labels?: Partial<WalletSelectorLabels>;
   className?: string;
+  /**
+   * Visual color mode.
+   *
+   * @default "light"
+   */
+  theme?: WalletSelectorTheme;
 }
 
 export function WalletSelectorModal({
@@ -102,6 +120,7 @@ export function WalletSelectorModal({
   onSelect,
   labels: labelOverrides,
   className,
+  theme = 'light',
 }: WalletSelectorModalProps) {
   const labels = { ...defaultLabels, ...labelOverrides };
   const { adapters, currentAdapter, connect } = useWallet();
@@ -144,7 +163,7 @@ export function WalletSelectorModal({
       setError(
         selectionError instanceof Error
           ? selectionError.message
-          : '无法连接所选钱包',
+          : 'Unable to connect to the selected wallet',
       );
     } finally {
       setConnectingName(null);
@@ -154,6 +173,7 @@ export function WalletSelectorModal({
   return (
     <div
       className="nzwa-modal-backdrop"
+      data-nzwa-theme={theme}
       onMouseDown={handleBackdropClick}
       role="presentation"
     >
@@ -213,11 +233,11 @@ export function WalletSelectorModal({
                         )}`}
                       >
                         {connecting
-                          ? '连接中…'
+                          ? labels.connecting
                           : getStatusLabel(adapter.readyState, selected, labels)}
                       </span>
                     </span>
-                    {connecting ? <SpinnerIcon /> : <ArrowIcon />}
+                    {connecting && <SpinnerIcon />}
                   </button>
 
                   {adapter.readyState === WalletReadyState.NotDetected && (
@@ -252,6 +272,12 @@ export interface WalletSelectorProps {
   className?: string;
   modalClassName?: string;
   disabled?: boolean;
+  /**
+   * Visual color mode.
+   *
+   * @default "light"
+   */
+  theme?: WalletSelectorTheme;
 }
 
 /**
@@ -264,6 +290,7 @@ export function WalletSelector({
   className,
   modalClassName,
   disabled,
+  theme = 'light',
 }: WalletSelectorProps) {
   const { currentAdapter } = useWallet();
   const [open, setOpen] = useState(false);
@@ -273,6 +300,7 @@ export function WalletSelector({
       <WalletSelectorButton
         adapter={currentAdapter}
         onClick={() => setOpen(true)}
+        theme={theme}
         {...(labels ? { labels } : {})}
         {...(className ? { className } : {})}
         {...(disabled !== undefined ? { disabled } : {})}
@@ -280,6 +308,7 @@ export function WalletSelector({
       <WalletSelectorModal
         open={open}
         onClose={() => setOpen(false)}
+        theme={theme}
         {...(onSelect ? { onSelect } : {})}
         {...(labels ? { labels } : {})}
         {...(modalClassName ? { className: modalClassName } : {})}
@@ -315,14 +344,6 @@ function ChevronIcon() {
   return (
     <svg className="nzwa-icon" viewBox="0 0 20 20" aria-hidden="true">
       <path d="m6.5 8 3.5 3.5L13.5 8" />
-    </svg>
-  );
-}
-
-function ArrowIcon() {
-  return (
-    <svg className="nzwa-icon" viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M4 10h11m-4-4 4 4-4 4" />
     </svg>
   );
 }
