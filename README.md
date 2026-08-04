@@ -1,6 +1,6 @@
 # Noir Zcash Wallet Adapter
 
-A browser wallet adapter built specifically for **Zcash**. The project follows a layered internal architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. All layers are distributed as one `@noir-wallet/adapter` package. The current wallet implementation integrates with the `window.noirwallet.zcash` provider injected by Noir Wallet.
+A browser wallet adapter built specifically for **Zcash**. The project follows a layered internal architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. All layers are distributed as one `@rhea-finance/zcash-wallet-adapter` package. The current wallet implementation integrates with the `window.noirwallet.zcash` provider injected by Noir Wallet.
 
 This implementation does not reuse NEAR, EVM, or Solana transaction models:
 
@@ -27,7 +27,7 @@ src/
 These directories are implementation layers, not separate npm packages. Applications install a single dependency:
 
 ```bash
-pnpm add @noir-wallet/adapter
+pnpm add @rhea-finance/zcash-wallet-adapter
 ```
 
 To develop and verify this repository:
@@ -45,7 +45,7 @@ pnpm build
 import {
   NoirZcashWalletAdapter,
   WalletStore,
-} from '@noir-wallet/adapter';
+} from '@rhea-finance/zcash-wallet-adapter';
 
 const store = new WalletStore();
 const noir = new NoirZcashWalletAdapter({
@@ -91,14 +91,14 @@ re-exports all three SDKs from isolated entry points:
 
 | Adapter import | Unified SDK entry | Purpose |
 | --- | --- | --- |
-| `@noir-wallet/adapter/aggregation` | `@rhea-finance/crosschain-sdk/aggregation` | Cross-chain swaps and the Noir Zcash executor |
-| `@noir-wallet/adapter/lending` | `@rhea-finance/crosschain-sdk/lending` | Cross-chain lending and the Noir Zcash bridge |
-| `@noir-wallet/adapter/perps` | `@rhea-finance/crosschain-sdk/perps` | Perpetual markets, accounts, funding, and trading |
+| `@rhea-finance/zcash-wallet-adapter/aggregation` | `@rhea-finance/crosschain-sdk/aggregation` | Cross-chain swaps and the Noir Zcash executor |
+| `@rhea-finance/zcash-wallet-adapter/lending` | `@rhea-finance/crosschain-sdk/lending` | Cross-chain lending and the Noir Zcash bridge |
+| `@rhea-finance/zcash-wallet-adapter/perps` | `@rhea-finance/crosschain-sdk/perps` | Perpetual markets, accounts, funding, and trading |
 
 Applications install only the adapter package:
 
 ```bash
-pnpm add @noir-wallet/adapter
+pnpm add @rhea-finance/zcash-wallet-adapter
 ```
 
 The root entry does not import or re-export these SDKs. Each integration is an
@@ -113,12 +113,12 @@ the default adapter entry point. The dedicated subpath exports the complete
 aggregation SDK together with the Noir-specific bridge:
 
 ```ts
-import { NoirZcashWalletAdapter } from '@noir-wallet/adapter';
+import { NoirZcashWalletAdapter } from '@rhea-finance/zcash-wallet-adapter';
 import {
   createNoirSwapClient,
   parseUnits,
   type AssetRef,
-} from '@noir-wallet/adapter/aggregation';
+} from '@rhea-finance/zcash-wallet-adapter/aggregation';
 
 const noir = new NoirZcashWalletAdapter({ network: 'mainnet' });
 await noir.connect();
@@ -182,9 +182,9 @@ testnet `tm`/`t2` prefix. This restriction applies to the cross-chain deposit
 step only; normal Noir wallet transfers may still use supported Unified or
 shielded recipients.
 
-`@noir-wallet/adapter` does not re-export this bridge from its root entry.
+`@rhea-finance/zcash-wallet-adapter` does not re-export this bridge from its root entry.
 Bundlers do not include it unless the application imports
-`@noir-wallet/adapter/aggregation`.
+`@rhea-finance/zcash-wallet-adapter/aggregation`.
 
 ## RHEA cross-chain lending integration
 
@@ -192,10 +192,10 @@ The dedicated lending subpath exports the complete lending SDK and connects its
 Zcash flows to Noir Wallet:
 
 ```ts
-import { NoirZcashWalletAdapter } from '@noir-wallet/adapter';
+import { NoirZcashWalletAdapter } from '@rhea-finance/zcash-wallet-adapter';
 import {
   createNoirCrossChainLendingBridge,
-} from '@noir-wallet/adapter/lending';
+} from '@rhea-finance/zcash-wallet-adapter/lending';
 
 const noir = new NoirZcashWalletAdapter({ network: 'mainnet' });
 await noir.connect();
@@ -252,7 +252,7 @@ The perps subpath re-exports the complete RHEA perpetuals SDK without adding it
 to the adapter root or either of the other SDK entries:
 
 ```ts
-import { PerpsClient } from '@noir-wallet/adapter/perps';
+import { PerpsClient } from '@rhea-finance/zcash-wallet-adapter/perps';
 
 const perps = new PerpsClient();
 
@@ -275,8 +275,8 @@ The UI package is intentionally limited to wallet selection. It displays wallet 
 import {
   NoirZcashWalletAdapter,
   WalletProvider,
-} from '@noir-wallet/adapter';
-import '@noir-wallet/adapter/styles.css';
+} from '@rhea-finance/zcash-wallet-adapter';
+import '@rhea-finance/zcash-wallet-adapter/styles.css';
 
 const adapters = [new NoirZcashWalletAdapter({ network: 'mainnet' })];
 
@@ -354,14 +354,14 @@ CSS variables can be customized:
 
 ## Headless React state bindings
 
-Use the `@noir-wallet/adapter/react` subpath when the application needs state management without any built-in UI. This is a subpath of the same installed package, not another dependency.
+Use the `@rhea-finance/zcash-wallet-adapter/react` subpath when the application needs state management without any built-in UI. This is a subpath of the same installed package, not another dependency.
 
 ```tsx
-import { NoirZcashWalletAdapter } from '@noir-wallet/adapter';
+import { NoirZcashWalletAdapter } from '@rhea-finance/zcash-wallet-adapter';
 import {
   WalletProvider,
   useWallet,
-} from '@noir-wallet/adapter/react';
+} from '@rhea-finance/zcash-wallet-adapter/react';
 
 const adapters = [new NoirZcashWalletAdapter({ network: 'mainnet' })];
 
