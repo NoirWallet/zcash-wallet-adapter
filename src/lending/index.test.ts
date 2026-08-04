@@ -53,7 +53,7 @@ function createSdkLoader() {
   return { sdk, loadSdk: loadSdk as LoadRheaCrossChainSdk };
 }
 
-describe('RHEA cross-chain lending integration', () => {
+describe('RHEA lending integration', () => {
   it('loads the official SDK lazily and supports its Zcash wallet formatter', async () => {
     const sdk = await loadRheaCrossChainSdk();
     expect(

@@ -1,3 +1,5 @@
+export * from '@rhea-finance/crosschain-sdk/lending';
+
 import {
   WalletInvalidInputError,
   WalletNotConnectedError,
@@ -13,9 +15,9 @@ const MAINNET_TRANSPARENT_ADDRESS = /^t(?:1|3)[1-9A-HJ-NP-Za-km-z]{33}$/;
 const TESTNET_TRANSPARENT_ADDRESS = /^(?:tm|t2)[1-9A-HJ-NP-Za-km-z]{33}$/;
 
 export type RheaCrossChainSdk =
-  typeof import('@rhea-finance/cross-chain-sdk');
+  typeof import('@rhea-finance/crosschain-sdk/lending');
 export type RheaZcashDepositStatus =
-  import('@rhea-finance/cross-chain-sdk').IDataByAddressResponse;
+  import('@rhea-finance/crosschain-sdk/lending').IDataByAddressResponse;
 export type LoadRheaCrossChainSdk = () => Promise<RheaCrossChainSdk>;
 
 export interface NoirZcashLendingWallet {
@@ -75,7 +77,7 @@ export interface ZcashLendingDepositResult {
 
 export interface NoirCrossChainLendingBridge {
   /**
-   * Loads the complete RHEA lending SDK on demand.
+ * Loads the RHEA lending SDK on demand.
    */
   loadSdk(): Promise<RheaCrossChainSdk>;
   /**
@@ -97,13 +99,13 @@ export interface NoirCrossChainLendingBridge {
 }
 
 /**
- * Lazily imports the complete RHEA cross-chain lending SDK.
+ * Lazily imports the RHEA cross-chain lending entry.
  *
- * Keeping this as a dynamic import prevents the SDK's large multi-chain module
- * from entering the default wallet-adapter bundle.
+ * The isolated package subpath keeps aggregation and perps code out of the
+ * lending entry and the default wallet-adapter bundle.
  */
 export function loadRheaCrossChainSdk(): Promise<RheaCrossChainSdk> {
-  return import('@rhea-finance/cross-chain-sdk');
+  return import('@rhea-finance/crosschain-sdk/lending');
 }
 
 /**

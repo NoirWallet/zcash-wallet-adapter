@@ -97,6 +97,14 @@ class MockProvider implements NoirZcashProvider {
 }
 
 describe('NoirZcashWalletAdapter', () => {
+  it('uses the official Noir Wallet favicon', () => {
+    const adapter = new NoirZcashWalletAdapter();
+
+    expect(adapter.icon).toBe(
+      'https://img.rhea.finance/images/noir-favicon.png',
+    );
+  });
+
   it('connects to the real Noir Zcash RPC surface and exposes shielded address first', async () => {
     const provider = new MockProvider();
     const adapter = new NoirZcashWalletAdapter({ provider });

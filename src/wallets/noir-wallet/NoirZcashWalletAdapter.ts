@@ -36,8 +36,7 @@ import {
 
 const INITIALIZED_EVENT = 'noirwallet#initialized';
 
-const NOIR_ICON =
-  'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%23111111%22/%3E%3Cpath d=%22M17 47V17h8l14 19V17h8v30h-8L25 28v19z%22 fill=%22%23f4b728%22/%3E%3C/svg%3E';
+const NOIR_ICON = 'https://img.rhea.finance/images/noir-favicon.png';
 
 interface RawPublicKey {
   pubkey: string;

@@ -51,7 +51,7 @@ class MockNoirWallet implements NoirZcashSwapWallet {
   }
 }
 
-describe('RHEA Cross-Chain DEX integration', () => {
+describe('RHEA aggregation integration', () => {
   it('converts RHEA base units and submits through Noir Wallet', async () => {
     const wallet = new MockNoirWallet();
     const adapter = createRheaZcashWalletAdapter(wallet);
