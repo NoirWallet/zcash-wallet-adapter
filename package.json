@@ -65,7 +65,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@rhea-finance/crosschain-sdk": "0.1.0"
+    "@rhea-finance/crosschain-sdk": "0.1.1"
   },
   "publishConfig": {
     "access": "public",
