@@ -101,11 +101,11 @@ class MockProvider implements NoirZcashProvider {
 }
 
 describe('NoirZcashWalletAdapter', () => {
-  it('uses the official Noir Wallet favicon', () => {
+  it('uses the official Noir Wallet icon', () => {
     const adapter = new NoirZcashWalletAdapter();
 
     expect(adapter.icon).toBe(
-      'https://img.rhea.finance/images/noir-favicon.png',
+      'https://img.rhea.finance/images/noir-icon-128.png',
     );
   });
 
