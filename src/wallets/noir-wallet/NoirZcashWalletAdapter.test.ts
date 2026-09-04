@@ -8,7 +8,11 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import { NoirZcashWalletAdapter } from './NoirZcashWalletAdapter.js';
-import type { NoirRequestArguments, NoirZcashProvider } from './provider.js';
+import type {
+  NoirRequestArguments,
+  NoirWindow,
+  NoirZcashProvider,
+} from './provider.js';
 
 const primaryConnection = {
   transparent: 't1PrimaryAddress',
@@ -105,7 +109,7 @@ describe('NoirZcashWalletAdapter', () => {
     );
   });
 
-  it('connects to the real Noir Zcash RPC surface and exposes shielded address first', async () => {
+  it('connects after account authorization without requesting an optional public key', async () => {
     const provider = new MockProvider();
     const adapter = new NoirZcashWalletAdapter({ provider });
 
@@ -115,11 +119,43 @@ describe('NoirZcashWalletAdapter', () => {
     expect(adapter.address).toBe('u1PrimaryShieldedAddress');
     expect(adapter.shieldedAddress).toBe('u1PrimaryShieldedAddress');
     expect(adapter.transparentAddress).toBe('t1PrimaryAddress');
-    expect(adapter.publicKey).toBe('02abcdef');
+    expect(adapter.publicKey).toBeNull();
     expect(provider.requests.map(({ method }) => method)).toEqual([
       'zcash_requestAccounts',
-      'zcash_getPublicKey',
     ]);
+  });
+
+  it('connects through a late injection without a stale detection downgrading state', async () => {
+    const provider = new MockProvider();
+    const browserWindow: NoirWindow = {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    const adapter = new NoirZcashWalletAdapter({
+      window: browserWindow,
+      detectionTimeout: 20,
+    });
+
+    const initialDetection = adapter.detect();
+    browserWindow.noirwallet = {
+      isNoirWallet: true,
+      zcash: provider,
+    };
+
+    const result = await Promise.race([
+      adapter.connect().then((connection) => ({ status: 'resolved', connection } as const)),
+      new Promise<{ status: 'pending' }>((resolve) => {
+        setTimeout(() => resolve({ status: 'pending' }), 0);
+      }),
+    ]);
+
+    expect(result).toEqual({ status: 'resolved', connection: primaryConnection });
+    await expect(initialDetection).resolves.toBe(true);
+    expect(provider.requests.map(({ method }) => method)).toEqual([
+      'zcash_requestAccounts',
+    ]);
+    expect(adapter.readyState).toBe(WalletReadyState.Connected);
+    expect(adapter.isConnected).toBe(true);
   });
 
   it('uses a silent account query during auto-connect and never requests approval', async () => {
@@ -131,6 +167,25 @@ describe('NoirZcashWalletAdapter', () => {
 
     expect(provider.requests[0]?.method).toBe('zcash_getAccounts');
     expect(provider.requests.some(({ method }) => method === 'zcash_requestAccounts')).toBe(false);
+  });
+
+  it('keeps public-key lookup available as an explicit identity operation', async () => {
+    const provider = new MockProvider();
+    const adapter = new NoirZcashWalletAdapter({ provider });
+
+    await expect(
+      adapter.getPublicKey({ signingMode: 'derived' }),
+    ).resolves.toEqual({
+      publicKey: '02abcdef',
+      address: 't1PrimaryAddress',
+      signingMode: 'derived',
+    });
+    expect(provider.requests).toEqual([
+      {
+        method: 'zcash_getPublicKey',
+        params: [{ signingMode: 'derived' }],
+      },
+    ]);
   });
 
   it('normalizes message signatures and forwards the requested privacy mode', async () => {
@@ -298,7 +353,7 @@ describe('WalletStore', () => {
     values.set('zcash:lastConnectedWallet', adapter.name);
     provider.connected = true;
     await expect(store.autoConnect()).resolves.toBe(adapter);
-    expect(provider.requests.at(-2)?.method).toBe('zcash_getAccounts');
+    expect(provider.requests.at(-1)?.method).toBe('zcash_getAccounts');
   });
 
   it('keeps the connected store snapshot after a transaction error', async () => {

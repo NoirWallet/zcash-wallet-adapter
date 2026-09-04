@@ -123,6 +123,9 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
   }
 
   async detect(): Promise<boolean> {
+    if (!this.provider) {
+      this.provider = this.getInjectedWallet()?.zcash ?? null;
+    }
     if (this.provider) {
       this.setInstalled();
       return true;
@@ -145,9 +148,8 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
       if (!raw) throw new WalletNotConnectedError();
 
       const connection = normalizeConnection(raw);
-      const publicKey = await this.requestPublicKey(provider, { signingMode: 'current' });
       this.bindProviderEvents(provider);
-      this.setConnected(connection, publicKey?.publicKey ?? null);
+      this.setConnected(connection, null);
       return connection;
     } catch (error) {
       const normalized = normalizeProviderError(error, 'Failed to connect Noir Wallet');
@@ -289,9 +291,13 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
         : {}),
     });
 
-    this.provider = provider;
-    this.setReadyState(provider ? WalletReadyState.Installed : WalletReadyState.NotDetected);
-    return provider !== null;
+    this.provider ??= provider;
+    if (this.provider) {
+      this.setInstalled();
+    } else {
+      this.setReadyState(WalletReadyState.NotDetected);
+    }
+    return this.provider !== null;
   }
 
   private async requireProvider(): Promise<NoirZcashProvider> {
