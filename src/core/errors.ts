@@ -92,7 +92,7 @@ export function normalizeProviderError(error: unknown, fallbackMessage: string):
   const code = typeof candidate?.code === 'number' ? candidate.code : undefined;
   const message = typeof candidate?.message === 'string' ? candidate.message : fallbackMessage;
 
-  if (code === 4001) return new UserRejectedError(message, error);
+  if (code === 4001 || code === 5000) return new UserRejectedError(message, error);
   if (code === -32002) return new WalletRequestPendingError(message, error);
   if (code === 4200 || code === -32601) {
     return new WalletMethodNotSupportedError(message);

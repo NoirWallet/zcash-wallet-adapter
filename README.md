@@ -1,6 +1,6 @@
 # Noir Zcash Wallet Adapter
 
-A browser wallet adapter built specifically for **Zcash**. The project follows a layered internal architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. All layers are distributed as one `@rhea-finance/zcash-wallet-adapter` package. The current wallet implementation integrates with the `window.noirwallet.zcash` provider injected by Noir Wallet.
+A browser wallet adapter built specifically for **Zcash**. The project follows a layered internal architecture consisting of a core interface, wallet-specific implementations, framework bindings, and an optional wallet-selection UI. All layers are distributed as one `@rhea-finance/zcash-wallet-adapter` package. Noir Wallet can be connected through its injected `window.noirwallet.zcash` provider or the optional WalletConnect transport.
 
 This implementation does not reuse NEAR, EVM, or Solana transaction models:
 
@@ -16,7 +16,8 @@ This implementation does not reuse NEAR, EVM, or Solana transaction models:
 ```text
 src/
 ├── core/                    # Types, errors, events, base adapter, and WalletStore
-├── wallets/noir-wallet/     # Noir Wallet Zcash provider implementation
+├── wallets/noir-wallet/     # Noir Wallet injected-provider implementation
+├── wallets/walletconnect/   # WalletConnect transport for Noir Wallet
 ├── react/                   # WalletProvider and useWallet
 ├── ui/                      # Wallet-selection button and modal only
 ├── aggregation/             # RHEA aggregation SDK and Noir Zcash bridge
@@ -83,6 +84,72 @@ A previously authorized connection can be restored silently after a page reload.
 ```ts
 await store.autoConnect();
 ```
+
+## WalletConnect
+
+The WalletConnect adapter follows the `bip122` Zcash namespace used by the
+Noir WalletConnect demo. It requests the Zcash mainnet chain
+`bip122:00040fe8ec8471911baa1db1266ea15d` and these methods:
+
+- `zcash_getAddress`
+- `zcash_getBalance`
+- `zcash_transfer`
+
+Import it from the dedicated entry point so applications that only use the
+injected Noir provider do not load WalletConnect:
+
+```ts
+import { WalletStore } from '@rhea-finance/zcash-wallet-adapter';
+import { WalletConnectZcashWalletAdapter } from '@rhea-finance/zcash-wallet-adapter/walletconnect';
+
+const projectId = 'YOUR_REOWN_PROJECT_ID';
+const walletConnect = new WalletConnectZcashWalletAdapter({
+  projectId,
+  metadata: {
+    name: 'My Zcash App',
+    description: 'My Zcash application',
+    url: window.location.origin,
+    icons: ['https://example.com/icon.png'],
+  },
+  onDisplayUri: async (uri) => {
+    // Render this URI as a QR code, open it with a mobile wallet, or pass it
+    // to the Noir extension bridge shown below.
+    showWalletConnectQr(uri);
+  },
+});
+
+const store = new WalletStore();
+store.registerAdapter(walletConnect);
+await store.connect(walletConnect.name);
+
+const balance = await walletConnect.getBalance();
+const txid = await walletConnect.signAndSendTransaction({
+  to: 't1...',
+  amount: '0.1',
+  fundingSource: 'transparent',
+});
+```
+
+The reference Noir extension accepts the pairing URI through its content
+script. Use this callback when that extension is the target wallet:
+
+```ts
+onDisplayUri: (uri) => {
+  window.postMessage(
+    { type: 'NOIR_WC_PAIR', uri, projectId },
+    window.location.origin,
+  );
+},
+```
+
+The adapter also emits `displayUri` with the same URI. WalletConnect sessions
+are persisted by `SignClient`, so `WalletStore.autoConnect()` restores an
+approved session without displaying another QR code.
+
+The current reference wallet is mainnet-only and spends transparent funds. It
+does not expose shielded funding, PCZT signing, public-key access, or message
+signing over WalletConnect. Those operations fail explicitly instead of being
+silently downgraded.
 
 ## RHEA cross-chain SDK entries
 

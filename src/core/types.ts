@@ -134,6 +134,8 @@ export interface WalletAdapterEventMap {
   };
   error: Error;
   readyStateChanged: WalletReadyState;
+  /** A WalletConnect URI that the application should render or open in a wallet. */
+  displayUri: string;
 }
 
 export type WalletAdapterEvent = keyof WalletAdapterEventMap;
@@ -148,8 +150,8 @@ export interface ZcashWalletAdapter {
   readonly readyState: WalletReadyState;
   readonly isConnected: boolean;
   /**
-   * Privacy-first primary address. For this adapter it is the shielded address;
-   * use transparentAddress when a t-address is explicitly required.
+   * Privacy-first primary address. This is the shielded address when one is
+   * available, otherwise it falls back to a transparent-only wallet address.
    */
   readonly address: string | null;
   readonly transparentAddress: string | null;

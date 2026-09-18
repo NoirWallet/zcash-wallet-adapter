@@ -42,15 +42,16 @@ export abstract class BaseZcashWalletAdapter
   }
 
   get address(): string | null {
-    return this._connection?.shielded ?? null;
+    if (!this._connection) return null;
+    return this._connection.shielded || this._connection.transparent || null;
   }
 
   get transparentAddress(): string | null {
-    return this._connection?.transparent ?? null;
+    return this._connection?.transparent || null;
   }
 
   get shieldedAddress(): string | null {
-    return this._connection?.shielded ?? null;
+    return this._connection?.shielded || null;
   }
 
   get publicKey(): string | null {
@@ -81,7 +82,7 @@ export abstract class BaseZcashWalletAdapter
     this.setReadyState(WalletReadyState.Connected);
     this.emit('connect', {
       ...connection,
-      address: connection.shielded,
+      address: connection.shielded || connection.transparent,
       publicKey,
       chainId: this._chainId,
     });
@@ -93,7 +94,7 @@ export abstract class BaseZcashWalletAdapter
     this.setReadyState(WalletReadyState.Connected);
     this.emit('accountChanged', {
       ...connection,
-      address: connection.shielded,
+      address: connection.shielded || connection.transparent,
       publicKey,
     });
   }
