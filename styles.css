@@ -85,7 +85,9 @@
 .nzwa-selector-button:focus-visible,
 .nzwa-modal__close:focus-visible,
 .nzwa-wallet-row__select:focus-visible,
-.nzwa-wallet-row__install:focus-visible {
+.nzwa-wallet-row__install:focus-visible,
+.nzwa-pairing__button:focus-visible,
+.nzwa-pairing__open:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--nzwa-accent) 45%, transparent);
   outline-offset: 2px;
 }
@@ -343,6 +345,91 @@
   );
   color: var(--nzwa-color-danger);
   font: 500 12px/1.45 var(--nzwa-font);
+}
+
+.nzwa-pairing {
+  display: grid;
+  gap: 16px;
+  padding: 8px 24px 24px;
+}
+
+.nzwa-pairing__description {
+  margin: 4px 0 0;
+  color: var(--nzwa-color-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.nzwa-pairing__qr-frame {
+  display: grid;
+  min-height: 264px;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid var(--nzwa-color-border);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.nzwa-pairing__qr {
+  display: block;
+  width: 248px;
+  max-width: 100%;
+  height: auto;
+}
+
+.nzwa-pairing__qr--hidden {
+  display: none;
+}
+
+.nzwa-pairing__error {
+  margin: 0;
+  padding: 20px;
+  color: var(--nzwa-color-danger);
+  font: 500 13px/1.5 var(--nzwa-font);
+  text-align: center;
+}
+
+.nzwa-pairing__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.nzwa-pairing__button,
+.nzwa-pairing__open {
+  display: inline-flex;
+  min-width: 0;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid var(--nzwa-color-border);
+  border-radius: 12px;
+  font: 600 13px/1 var(--nzwa-font);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.nzwa-pairing__button {
+  background: var(--nzwa-color-surface);
+  color: var(--nzwa-color-text);
+}
+
+.nzwa-pairing__button:hover {
+  background: var(--nzwa-color-panel);
+}
+
+.nzwa-pairing__open {
+  border-color: var(--nzwa-color-button);
+  background: var(--nzwa-color-button);
+  color: var(--nzwa-color-button-text);
+}
+
+.nzwa-pairing__open:hover {
+  border-color: var(--nzwa-accent-strong);
 }
 
 .nzwa-spinner {

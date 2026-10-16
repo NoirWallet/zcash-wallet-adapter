@@ -1,6 +1,6 @@
 {
   "name": "@rhea-finance/zcash-wallet-adapter",
-  "version": "0.2.0",
+  "version": "0.2.1-rc.2",
   "type": "module",
   "sideEffects": [
     "./styles.css"
@@ -63,17 +63,24 @@
     "react": ">=18"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.8",
     "react": "^19.1.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@rhea-finance/crosschain-sdk": "0.1.6",
     "@walletconnect/sign-client": "^2.24.0",
-    "@rhea-finance/crosschain-sdk": "0.1.6"
+    "qrcode": "^1.5.4"
   },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "pnpm": {
+    "overrides": {
+      "@rhea-finance/cross-chain-aggregation-dex": "2.1.6-rc.0"
+    }
   }
 }

@@ -4,17 +4,26 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@rhea-finance/cross-chain-aggregation-dex': 2.1.6-rc.0
+
 importers:
 
   .:
     dependencies:
       '@rhea-finance/crosschain-sdk':
-        specifier: 0.1.5
-        version: 0.1.5(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@18.2.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)
+        specifier: 0.1.6
+        version: 0.1.6(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@18.2.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)
       '@walletconnect/sign-client':
         specifier: ^2.24.0
         version: 2.25.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
     devDependencies:
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       '@types/react':
         specifier: ^19.1.8
         version: 19.2.17
@@ -449,9 +458,13 @@ packages:
     resolution: {integrity: sha512-ZpaKGuaA+xWL2jIgZikv9xyf/PGoKwlvPAj+XQR5QZn+KRfX318zbsn/RB0Wgu/vZ+tyY47zU/fqBS1NyJK/og==}
     engines: {node: '>=16'}
 
-  '@rhea-finance/cross-chain-aggregation-dex@2.0.6':
-    resolution: {integrity: sha512-0MJYAjKPHYoVXAnZVpluwHc5Y29WKkWEksVsknSxJgZzbmZ+3H63wVj1O07M7ZOxEa8QMj1yZqvYjoHqp+W9rA==}
-    engines: {node: '>=16.0.0'}
+  '@rhea-finance/confidential-swap@0.2.8':
+    resolution: {integrity: sha512-8IDJOMwSEmjctMGR932hwfmZ7AqCxPFz5Au8stQPh6z1G4Qk9RvG9wWY9uJ8CSzVNrs+zzo6xmLqmUD9k+W3Wg==}
+    engines: {node: '>=20'}
+
+  '@rhea-finance/cross-chain-aggregation-dex@2.1.6-rc.0':
+    resolution: {integrity: sha512-0YmRluzl59iedaLuY1AYwJZ5YfxxisKH1ZGa2Dy9ySwF81q+Wa7yIveCok+N4hbjFGYs5JM8K0miSSdOiJwocA==}
+    engines: {node: '>=20.0.0'}
 
   '@rhea-finance/cross-chain-sdk@0.1.20':
     resolution: {integrity: sha512-kZM0h0VMKQKIk0APuv2qLV3KKUSnl2YvftvcUmzG4gCjS2LTtr8NEL6KyLNz0N3Y8tSP6qKzkhoLtdOvVWnnFg==}
@@ -460,8 +473,8 @@ packages:
     resolution: {integrity: sha512-xCkmCiYNJEfpeGgPLUeS66w60jpeBJT/9MHnJcNHuvpOBY5kxo9O0ZFFiO56eEbzJzo0D1pV2QTqoJi/pm2N7A==}
     engines: {node: '>=18'}
 
-  '@rhea-finance/crosschain-sdk@0.1.5':
-    resolution: {integrity: sha512-mKBQ11ya+79V4Rro73eCAptmJv9IvbxzokoEdiZ9f+I7erLcG6cD3lWHgUmGxQ6ZyONESaVMZ4Jw9QQrqEcaWg==}
+  '@rhea-finance/crosschain-sdk@0.1.6':
+    resolution: {integrity: sha512-PSMAIDmnH4uhNAF8WAym3jOzIhmdmmW99+WvQd5nLDXotd6dsbPdNbO8QgqPrrYKQeGmoV5i9x9xlk/V3kFKiQ==}
     engines: {node: '>=18'}
 
   '@rollup/rollup-android-arm-eabi@4.62.3':
@@ -696,6 +709,9 @@ packages:
 
   '@types/node@26.1.2':
     resolution: {integrity: sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==}
+
+  '@types/qrcode@1.5.6':
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
 
   '@types/react@19.2.17':
     resolution: {integrity: sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==}
@@ -2724,8 +2740,15 @@ snapshots:
       - encoding
       - utf-8-validate
 
-  '@rhea-finance/cross-chain-aggregation-dex@2.0.6':
+  '@rhea-finance/confidential-swap@0.2.8':
     dependencies:
+      '@noble/curves': 1.9.7
+      '@noble/hashes': 1.8.0
+      '@scure/base': 1.2.6
+
+  '@rhea-finance/cross-chain-aggregation-dex@2.1.6-rc.0':
+    dependencies:
+      '@rhea-finance/confidential-swap': 0.2.8
       zod: 4.4.3
 
   '@rhea-finance/cross-chain-sdk@0.1.20(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@18.2.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)':
@@ -2767,9 +2790,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@rhea-finance/crosschain-sdk@0.1.5(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@18.2.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)':
+  '@rhea-finance/crosschain-sdk@0.1.6(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@18.2.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)':
     dependencies:
-      '@rhea-finance/cross-chain-aggregation-dex': 2.0.6
+      '@rhea-finance/cross-chain-aggregation-dex': 2.1.6-rc.0
       '@rhea-finance/cross-chain-sdk': 0.1.20(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@18.2.0(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)
       '@rhea-finance/crosschain-perps-sdk': 0.1.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
@@ -3033,6 +3056,10 @@ snapshots:
   '@types/node@26.1.2':
     dependencies:
       undici-types: 8.3.0
+
+  '@types/qrcode@1.5.6':
+    dependencies:
+      '@types/node': 26.1.2
 
   '@types/react@19.2.17':
     dependencies:

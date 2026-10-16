@@ -134,7 +134,7 @@ export interface WalletAdapterEventMap {
   };
   error: Error;
   readyStateChanged: WalletReadyState;
-  /** A WalletConnect URI that the application should render or open in a wallet. */
+  /** A WalletConnect URI for built-in or application-provided pairing UI. */
   displayUri: string;
 }
 

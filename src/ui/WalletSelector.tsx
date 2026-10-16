@@ -6,6 +6,7 @@ import {
   type ButtonHTMLAttributes,
   type MouseEvent,
 } from 'react';
+import QRCode from 'qrcode';
 
 import {
   WalletReadyState,
@@ -28,6 +29,13 @@ export interface WalletSelectorLabels {
   connecting: string;
   installing: string;
   empty: string;
+  pairingTitle: string;
+  pairingDescription: string;
+  pairingQrCode: string;
+  pairingError: string;
+  copyLink: string;
+  copied: string;
+  openWallet: string;
 }
 
 const defaultLabels: WalletSelectorLabels = {
@@ -43,6 +51,13 @@ const defaultLabels: WalletSelectorLabels = {
   connecting: 'Connecting…',
   installing: 'Install',
   empty: 'No wallets available',
+  pairingTitle: 'Connect Noir Wallet',
+  pairingDescription: 'Scan this code with the mobile wallet.',
+  pairingQrCode: 'WalletConnect pairing QR code',
+  pairingError: 'Unable to prepare the WalletConnect pairing link',
+  copyLink: 'Copy link',
+  copied: 'Copied',
+  openWallet: 'Open wallet',
 };
 
 export interface WalletSelectorButtonProps
@@ -126,9 +141,49 @@ export function WalletSelectorModal({
   const { adapters, currentAdapter, connect } = useWallet();
   const [connectingName, setConnectingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pairingUri, setPairingUri] = useState<string | null>(null);
+  const [pairingCopied, setPairingCopied] = useState(false);
+  const [pairingError, setPairingError] = useState<string | null>(null);
   const titleId = useId();
   const descriptionId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const handleDisplayUri = (uri: string): void => {
+      setPairingUri(uri);
+      setPairingCopied(false);
+      setPairingError(null);
+    };
+
+    for (const adapter of adapters) {
+      adapter.on('displayUri', handleDisplayUri);
+    }
+    return () => {
+      for (const adapter of adapters) {
+        adapter.off('displayUri', handleDisplayUri);
+      }
+    };
+  }, [adapters]);
+
+  useEffect(() => {
+    if (!pairingUri || !qrCanvasRef.current) return;
+
+    let active = true;
+    void QRCode.toCanvas(qrCanvasRef.current, pairingUri, {
+      width: 248,
+      margin: 2,
+      color: {
+        dark: '#171717',
+        light: '#ffffff',
+      },
+    }).catch(() => {
+      if (active) setPairingError(labels.pairingError);
+    });
+    return () => {
+      active = false;
+    };
+  }, [labels.pairingError, pairingUri]);
 
   useEffect(() => {
     if (!open) return;
@@ -136,7 +191,10 @@ export function WalletSelectorModal({
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        setPairingUri(null);
+        onClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -144,22 +202,29 @@ export function WalletSelectorModal({
 
   if (!open) return null;
 
+  const closeModal = (): void => {
+    setPairingUri(null);
+    onClose();
+  };
+
   const handleBackdropClick = (event: MouseEvent<HTMLDivElement>): void => {
-    if (event.target === event.currentTarget) onClose();
+    if (event.target === event.currentTarget) closeModal();
   };
 
   const handleSelect = async (adapter: ZcashWalletAdapter): Promise<void> => {
     if (connectingName) return;
     setConnectingName(adapter.name);
     setError(null);
+    setPairingUri(null);
     try {
       if (onSelect) {
         await onSelect(adapter);
       } else {
         await connect(adapter.name);
       }
-      onClose();
+      closeModal();
     } catch (selectionError) {
+      setPairingUri(null);
       setError(
         selectionError instanceof Error
           ? selectionError.message
@@ -187,10 +252,19 @@ export function WalletSelectorModal({
         <header className="nzwa-modal__header">
           <div>
             <h2 id={titleId} className="nzwa-modal__title">
-              {labels.dialogTitle}
+              {pairingUri ? labels.pairingTitle : labels.dialogTitle}
             </h2>
-            <p id={descriptionId} className="nzwa-modal__description">
-              {labels.dialogDescription}
+            <p
+              id={descriptionId}
+              className={
+                pairingUri
+                  ? 'nzwa-pairing__description'
+                  : 'nzwa-modal__description'
+              }
+            >
+              {pairingUri
+                ? labels.pairingDescription
+                : labels.dialogDescription}
             </p>
           </div>
           <button
@@ -198,65 +272,103 @@ export function WalletSelectorModal({
             type="button"
             className="nzwa-modal__close"
             aria-label={labels.close}
-            onClick={onClose}
+            onClick={closeModal}
           >
             <CloseIcon />
           </button>
         </header>
 
-        <div className="nzwa-wallet-list">
-          {adapters.length === 0 ? (
-            <p className="nzwa-wallet-list__empty">{labels.empty}</p>
-          ) : (
-            adapters.map((adapter) => {
-              const selected = currentAdapter?.name === adapter.name;
-              const connecting = connectingName === adapter.name;
+        {pairingUri ? (
+          <div className="nzwa-pairing">
+            <div className="nzwa-pairing__qr-frame">
+              <canvas
+                ref={qrCanvasRef}
+                className={
+                  pairingError
+                    ? 'nzwa-pairing__qr--hidden'
+                    : 'nzwa-pairing__qr'
+                }
+                aria-label={labels.pairingQrCode}
+              />
+              {pairingError && (
+                <p className="nzwa-pairing__error" role="alert">
+                  {pairingError}
+                </p>
+              )}
+            </div>
+            <div className="nzwa-pairing__actions">
+              <button
+                type="button"
+                className="nzwa-pairing__button"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(pairingUri)
+                    .then(() => setPairingCopied(true))
+                    .catch(() => setPairingCopied(false));
+                }}
+              >
+                {pairingCopied ? labels.copied : labels.copyLink}
+              </button>
+              <a className="nzwa-pairing__open" href={pairingUri}>
+                {labels.openWallet}
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="nzwa-wallet-list">
+            {adapters.length === 0 ? (
+              <p className="nzwa-wallet-list__empty">{labels.empty}</p>
+            ) : (
+              adapters.map((adapter) => {
+                const selected = currentAdapter?.name === adapter.name;
+                const connecting = connectingName === adapter.name;
 
-              return (
-                <div className="nzwa-wallet-row" key={adapter.name}>
-                  <button
-                    type="button"
-                    className="nzwa-wallet-row__select"
-                    disabled={connectingName !== null}
-                    aria-current={selected ? 'true' : undefined}
-                    onClick={() => void handleSelect(adapter)}
-                  >
-                    <img className="nzwa-wallet-row__icon" src={adapter.icon} alt="" />
-                    <span className="nzwa-wallet-row__content">
-                      <strong className="nzwa-wallet-row__name">
-                        {adapter.displayName}
-                      </strong>
-                      <span
-                        className={`nzwa-wallet-row__status nzwa-wallet-row__status--${statusTone(
-                          adapter.readyState,
-                          selected,
-                        )}`}
-                      >
-                        {connecting
-                          ? labels.connecting
-                          : getStatusLabel(adapter.readyState, selected, labels)}
-                      </span>
-                    </span>
-                    {connecting && <SpinnerIcon />}
-                  </button>
-
-                  {adapter.readyState === WalletReadyState.NotDetected && (
-                    <a
-                      className="nzwa-wallet-row__install"
-                      href={adapter.url}
-                      target="_blank"
-                      rel="noreferrer"
+                return (
+                  <div className="nzwa-wallet-row" key={adapter.name}>
+                    <button
+                      type="button"
+                      className="nzwa-wallet-row__select"
+                      disabled={connectingName !== null}
+                      aria-current={selected ? 'true' : undefined}
+                      onClick={() => void handleSelect(adapter)}
                     >
-                      {labels.installing}
-                    </a>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+                      <img className="nzwa-wallet-row__icon" src={adapter.icon} alt="" />
+                      <span className="nzwa-wallet-row__content">
+                        <strong className="nzwa-wallet-row__name">
+                          {adapter.displayName}
+                        </strong>
+                        <span
+                          className={`nzwa-wallet-row__status nzwa-wallet-row__status--${statusTone(
+                            adapter.readyState,
+                            selected,
+                          )}`}
+                        >
+                          {connecting
+                            ? labels.connecting
+                            : getStatusLabel(adapter.readyState, selected, labels)}
+                        </span>
+                      </span>
+                      {connecting && <SpinnerIcon />}
+                    </button>
 
-        {error && (
+                    {adapter.readyState === WalletReadyState.NotDetected && (
+                      <a
+                        className="nzwa-wallet-row__install"
+                        href={adapter.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {labels.installing}
+                      </a>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {!pairingUri && error && (
           <p className="nzwa-modal__error" role="alert">
             {error}
           </p>

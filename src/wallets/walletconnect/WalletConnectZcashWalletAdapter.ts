@@ -24,6 +24,14 @@ export const ZCASH_WALLETCONNECT_METHODS = [
   'zcash_getAddress',
   'zcash_getBalance',
   'zcash_transfer',
+  'zcash_signMessage',
+] as const;
+
+/** Methods required for a usable Zcash WalletConnect session. */
+const ZCASH_WALLETCONNECT_REQUIRED_METHODS = [
+  'zcash_getAddress',
+  'zcash_getBalance',
+  'zcash_transfer',
 ] as const;
 
 export const ZCASH_WALLETCONNECT_EVENTS = [
@@ -129,12 +137,22 @@ interface WalletConnectTransferResult {
   txid?: string;
 }
 
-const NOIR_ICON = 'https://img.rhea.finance/images/noir-icon-128.png';
+interface WalletConnectSignMessageResult {
+  signature: string;
+  publicKey?: string;
+  pubkey?: string;
+  address: string;
+  signingMode?: string;
+  originAddress?: string;
+}
+
+const WALLETCONNECT_ICON =
+  'https://raw.githubusercontent.com/WalletConnect/walletconnect-assets/master/Icon/Blue%20(Default)/Icon.png';
 
 export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
   readonly name = 'noir-zcash-walletconnect';
   readonly displayName = 'Noir Wallet (WalletConnect)';
-  readonly icon = NOIR_ICON;
+  readonly icon = WALLETCONNECT_ICON;
   readonly url = 'https://zknoir.com';
   readonly supportedChains = ['zcash:mainnet'] as const;
 
@@ -288,12 +306,42 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
   }
 
   async signMessage(
-    _message: string | Uint8Array,
-    _options: ZcashSignMessageOptions = {},
+    message: string | Uint8Array,
+    options: ZcashSignMessageOptions = {},
   ): Promise<ZcashSignMessageResult> {
-    throw new WalletMethodNotSupportedError(
-      'The connected WalletConnect wallet does not expose Zcash message signing',
+    if (
+      this.session &&
+      !this.session.namespaces.bip122?.methods.includes('zcash_signMessage')
+    ) {
+      throw new WalletMethodNotSupportedError(
+        'This WalletConnect session does not include zcash_signMessage. Disconnect and reconnect to upgrade the session.',
+      );
+    }
+    const normalizedMessage = normalizeWcMessage(message);
+    if (normalizedMessage.length === 0) {
+      throw new WalletInvalidInputError('Message must not be empty');
+    }
+    const signingMode = options.signingMode ?? 'derived';
+    const result = await this.request<WalletConnectSignMessageResult>(
+      'zcash_signMessage',
+      {
+        message: normalizedMessage,
+        signingMode,
+      },
     );
+    if (!result?.signature || !(result.publicKey || result.pubkey) || !result.address) {
+      throw new WalletProviderError(
+        'WalletConnect returned an invalid Zcash message signature',
+      );
+    }
+    return {
+      signature: result.signature,
+      publicKey: result.publicKey ?? result.pubkey!,
+      address: result.address,
+      signingMode:
+        (result.signingMode as ZcashSignMessageResult['signingMode']) ?? signingMode,
+      ...(result.originAddress ? { originAddress: result.originAddress } : {}),
+    };
   }
 
   async signTransaction(_transaction: ZcashPczt): Promise<ZcashSignedTransaction> {
@@ -306,16 +354,13 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
     transaction: ZcashSendTransactionRequest,
   ): Promise<string> {
     validateSendRequest(transaction);
-    if (transaction.fundingSource === 'shielded') {
-      throw new WalletMethodNotSupportedError(
-        'The connected WalletConnect wallet only supports transparent funding',
-      );
-    }
+    const fundingSource = transaction.fundingSource ?? 'shielded';
     const result = await this.request<string | WalletConnectTransferResult>(
       'zcash_transfer',
       {
         ...transaction,
-        type: 'transparent',
+        fundingSource,
+        type: fundingSource,
       },
     );
     const txid = typeof result === 'string' ? result : result?.txid;
@@ -453,28 +498,50 @@ function isCompatibleSession(session: WalletConnectSession): boolean {
     );
   return (
     supportsChain &&
-    ZCASH_WALLETCONNECT_METHODS.every((method) =>
+    ZCASH_WALLETCONNECT_REQUIRED_METHODS.every((method) =>
       namespace.methods.includes(method),
     )
   );
 }
 
 function connectionFromSession(session: WalletConnectSession): ZcashConnection {
-  const account = session.namespaces.bip122?.accounts.find((candidate) =>
-    candidate.startsWith(`${ZCASH_WALLETCONNECT_CHAIN_ID}:`),
-  );
-  if (!account) {
+  const accounts =
+    session.namespaces.bip122?.accounts.filter((candidate) =>
+      candidate.startsWith(`${ZCASH_WALLETCONNECT_CHAIN_ID}:`),
+    ) ?? [];
+  if (accounts.length === 0) {
     throw new WalletProviderError(
       'WalletConnect session did not include a Zcash mainnet account',
     );
   }
-  const address = account.slice(ZCASH_WALLETCONNECT_CHAIN_ID.length + 1);
-  return connectionFromAddress(
-    address,
-    account,
-    session.peer?.publicKey ?? '',
-    session.peer?.metadata?.name ?? 'WalletConnect account',
-  );
+
+  let transparent = '';
+  let shielded = '';
+  for (const account of accounts) {
+    const address = account.slice(ZCASH_WALLETCONNECT_CHAIN_ID.length + 1);
+    if (!address) continue;
+    if (isTransparentAddress(address)) transparent = address;
+    else shielded = address;
+  }
+
+  if (!transparent && !shielded) {
+    throw new WalletProviderError('WalletConnect returned an empty Zcash address');
+  }
+
+  const primaryAccount = accounts[0]!;
+  return {
+    transparent,
+    shielded,
+    accounts: [
+      {
+        id: primaryAccount,
+        label: session.peer?.metadata?.name ?? 'WalletConnect account',
+        walletId: session.peer?.publicKey ?? '',
+        accountId: primaryAccount,
+        addresses: { transparent, shielded },
+      },
+    ],
+  };
 }
 
 function connectionFromEventData(
@@ -551,5 +618,17 @@ function validateSendRequest(transaction: ZcashSendTransactionRequest): void {
   }
   if (transaction.memo && new TextEncoder().encode(transaction.memo).length > 512) {
     throw new WalletInvalidInputError('Zcash memo must not exceed 512 UTF-8 bytes');
+  }
+}
+
+function normalizeWcMessage(message: string | Uint8Array): string {
+  if (typeof message === 'string') return message;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(message);
+  } catch (error) {
+    throw new WalletInvalidInputError(
+      'Zcash WalletConnect signs UTF-8 text messages; the supplied bytes are not valid UTF-8',
+      error,
+    );
   }
 }

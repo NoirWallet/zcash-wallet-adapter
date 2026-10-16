@@ -78,6 +78,15 @@ class MockSignClient implements WalletConnectSignClient {
     if (options.request.method === 'zcash_transfer') {
       return { txid: 'walletconnect-txid' } as T;
     }
+    if (options.request.method === 'zcash_signMessage') {
+      return {
+        signature: '1f00',
+        publicKey: '02abcdef',
+        address: 't1DerivedAddress',
+        signingMode: 'derived',
+        originAddress: 't1WalletConnectAddress',
+      } as T;
+    }
     throw new Error(`Unsupported method: ${options.request.method}`);
   }
 
@@ -97,6 +106,45 @@ class MockSignClient implements WalletConnectSignClient {
 }
 
 describe('WalletConnectZcashWalletAdapter', () => {
+  it('uses the official WalletConnect icon', () => {
+    const adapter = new WalletConnectZcashWalletAdapter({
+      projectId: 'project-id',
+      client: new MockSignClient(),
+    });
+
+    expect(adapter.icon).toBe(
+      'https://raw.githubusercontent.com/WalletConnect/walletconnect-assets/master/Icon/Blue%20(Default)/Icon.png',
+    );
+  });
+
+  it('parses both shielded and transparent accounts from a WalletConnect session', async () => {
+    const client = new MockSignClient();
+    const shielded = `${ZCASH_WALLETCONNECT_CHAIN_ID}:u1ShieldedAddress`;
+    const transparent = `${ZCASH_WALLETCONNECT_CHAIN_ID}:t1WalletConnectAddress`;
+    client.approvedSession = {
+      ...createSession(),
+      namespaces: {
+        bip122: {
+          chains: [ZCASH_WALLETCONNECT_CHAIN_ID],
+          accounts: [shielded, transparent],
+          methods: [...ZCASH_WALLETCONNECT_METHODS],
+          events: [...ZCASH_WALLETCONNECT_EVENTS],
+        },
+      },
+    };
+    const adapter = new WalletConnectZcashWalletAdapter({
+      projectId: 'project-id',
+      client,
+    });
+
+    const connection = await adapter.connect();
+
+    expect(connection.shielded).toBe('u1ShieldedAddress');
+    expect(connection.transparent).toBe('t1WalletConnectAddress');
+    expect(adapter.shieldedAddress).toBe('u1ShieldedAddress');
+    expect(adapter.transparentAddress).toBe('t1WalletConnectAddress');
+  });
+
   it('creates the Zcash WalletConnect proposal and exposes the pairing URI', async () => {
     const client = new MockSignClient();
     const onDisplayUri = vi.fn();
@@ -182,7 +230,8 @@ describe('WalletConnectZcashWalletAdapter', () => {
             to: 't1Recipient',
             amount: '0.25',
             memo: 'WalletConnect transfer',
-            type: 'transparent',
+            fundingSource: 'shielded',
+            type: 'shielded',
           },
         },
       },
@@ -202,11 +251,22 @@ describe('WalletConnectZcashWalletAdapter', () => {
     ).rejects.toBeInstanceOf(WalletInvalidInputError);
     await expect(
       adapter.signAndSendTransaction({
-        to: 't1Recipient',
+        to: 'u1Recipient',
         amount: '1',
         fundingSource: 'shielded',
       }),
-    ).rejects.toBeInstanceOf(WalletMethodNotSupportedError);
+    ).resolves.toBe('walletconnect-txid');
+    expect(client.requests.at(-1)).toMatchObject({
+      request: {
+        method: 'zcash_transfer',
+        params: {
+          to: 'u1Recipient',
+          amount: '1',
+          fundingSource: 'shielded',
+          type: 'shielded',
+        },
+      },
+    });
 
     client.rejectNext = Object.assign(new Error('User rejected request'), { code: 5000 });
     await expect(
@@ -232,15 +292,37 @@ describe('WalletConnectZcashWalletAdapter', () => {
     expect(onDisconnect).toHaveBeenCalledOnce();
   });
 
-  it('makes unsupported signing capabilities explicit', async () => {
+  it('requests zcash_signMessage over WalletConnect', async () => {
+    const client = new MockSignClient();
+    const adapter = new WalletConnectZcashWalletAdapter({
+      projectId: 'project-id',
+      client,
+    });
+    await adapter.connect();
+
+    await expect(
+      adapter.signMessage('hello', { signingMode: 'derived' }),
+    ).resolves.toMatchObject({
+      signature: '1f00',
+      publicKey: '02abcdef',
+      address: 't1DerivedAddress',
+      signingMode: 'derived',
+      originAddress: 't1WalletConnectAddress',
+    });
+    expect(client.requests.at(-1)).toMatchObject({
+      request: {
+        method: 'zcash_signMessage',
+        params: { message: 'hello', signingMode: 'derived' },
+      },
+    });
+  });
+
+  it('makes unsupported PCZT signing explicit', async () => {
     const adapter = new WalletConnectZcashWalletAdapter({
       projectId: 'project-id',
       client: new MockSignClient(),
     });
 
-    await expect(adapter.signMessage('message')).rejects.toBeInstanceOf(
-      WalletMethodNotSupportedError,
-    );
     await expect(
       adapter.signTransaction({ pczt: 'cGN6dA==', network: 'mainnet' }),
     ).rejects.toBeInstanceOf(WalletMethodNotSupportedError);

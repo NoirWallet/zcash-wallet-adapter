@@ -111,9 +111,7 @@ const walletConnect = new WalletConnectZcashWalletAdapter({
     url: window.location.origin,
     icons: ['https://example.com/icon.png'],
   },
-  onDisplayUri: async (uri) => {
-    // Render this URI as a QR code, open it with a mobile wallet, or pass it
-    // to the Noir extension bridge shown below.
+  onDisplayUri: (uri) => {
     showWalletConnectQr(uri);
   },
 });
@@ -124,6 +122,12 @@ await store.connect(walletConnect.name);
 
 const balance = await walletConnect.getBalance();
 const txid = await walletConnect.signAndSendTransaction({
+  to: 'u1...',
+  amount: '0.1',
+  fundingSource: 'shielded',
+});
+
+const transparentTxid = await walletConnect.signAndSendTransaction({
   to: 't1...',
   amount: '0.1',
   fundingSource: 'transparent',
@@ -142,14 +146,17 @@ onDisplayUri: (uri) => {
 },
 ```
 
-The adapter also emits `displayUri` with the same URI. WalletConnect sessions
-are persisted by `SignClient`, so `WalletStore.autoConnect()` restores an
-approved session without displaying another QR code.
+The adapter also emits `displayUri` with the same URI. The ready-to-use
+`WalletSelector` consumes that event and renders its built-in pairing QR code.
+Headless integrations can handle `displayUri` directly or use `onDisplayUri`
+for a custom QR interface. WalletConnect sessions are persisted by
+`SignClient`, so `WalletStore.autoConnect()` restores an approved session
+without displaying another QR code.
 
-The current reference wallet is mainnet-only and spends transparent funds. It
-does not expose shielded funding, PCZT signing, public-key access, or message
-signing over WalletConnect. Those operations fail explicitly instead of being
-silently downgraded.
+`zcash_transfer` accepts both `fundingSource: 'shielded'` and
+`'transparent'`. Omitting `fundingSource` keeps the previous transparent
+default. PCZT signing is still not exposed over WalletConnect and fails
+explicitly.
 
 ## RHEA cross-chain SDK entries
 
@@ -336,7 +343,10 @@ imported, the perps SDK is excluded from the application bundle.
 
 ## Ready-to-use wallet selector
 
-The UI package is intentionally limited to wallet selection. It displays wallet names, icons, and installation status, then connects the selected wallet. It does not render accounts, addresses, balances, copy actions, or a disconnect panel.
+The UI package is intentionally limited to wallet selection and WalletConnect
+pairing. It displays wallet names, icons, installation status, and the pairing
+QR code when required, then connects the selected wallet. It does not render
+accounts, addresses, balances, transaction actions, or a disconnect panel.
 
 ```tsx
 import {
@@ -357,6 +367,44 @@ export function App() {
 ```
 
 The UI-ready `WalletProvider` renders `WalletSelector` automatically. The application does not need to import or mount the selector separately. By default, selecting a wallet calls `store.connect(walletName)`.
+
+`WalletSelector` displays the adapters passed to `WalletProvider`; it does not
+automatically discover WalletConnect wallets. To show both the injected Noir
+wallet and the WalletConnect transport, register both adapters:
+
+```tsx
+import {
+  NoirZcashWalletAdapter,
+  WalletProvider,
+} from '@rhea-finance/zcash-wallet-adapter';
+import {
+  WalletConnectZcashWalletAdapter,
+} from '@rhea-finance/zcash-wallet-adapter/walletconnect';
+import '@rhea-finance/zcash-wallet-adapter/styles.css';
+
+const projectId = 'YOUR_REOWN_PROJECT_ID';
+const adapters = [
+  new NoirZcashWalletAdapter({ network: 'mainnet' }),
+  new WalletConnectZcashWalletAdapter({
+    projectId,
+  }),
+];
+
+export function App() {
+  return (
+    <WalletProvider adapters={adapters} autoConnect>
+      <AppContent />
+    </WalletProvider>
+  );
+}
+```
+
+Keep the `adapters` array stable by declaring it outside the component or by
+creating it with `useMemo`. The selector shows one
+`Noir Wallet (WalletConnect)` transport entry; SignClient does not provide a
+wallet catalog. The built-in selector renders the pairing QR code automatically.
+Applications using the headless provider must render the URI from the adapter's
+`displayUri` event or `onDisplayUri` callback.
 
 The selector uses the light theme by default:
 
