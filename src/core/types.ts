@@ -100,6 +100,12 @@ export interface ZcashPublicKey {
   originAddress?: string;
 }
 
+export interface ZcashLendingMcaStatus {
+  mcaId: string | null;
+  publicKey: string | null;
+  signingMode: 'derived' | 'legacy' | 'legacy_index0';
+}
+
 export interface ZcashTransactionHistoryEntry {
   txid: string;
   type: string;

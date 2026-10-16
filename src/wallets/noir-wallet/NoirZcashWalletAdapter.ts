@@ -13,6 +13,7 @@ import {
   type ZcashBalanceResult,
   type ZcashChainId,
   type ZcashConnection,
+  type ZcashLendingMcaStatus,
   type ZcashMaxTransferEstimate,
   type ZcashMaxTransferRequest,
   type ZcashNetwork,
@@ -81,6 +82,10 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
   private readonly handleAccountsChanged = (...args: unknown[]): void => {
     const addresses = args[0];
     if (addresses === null) {
+      this.setDisconnected();
+      return;
+    }
+    if (Array.isArray(addresses) && addresses.length === 0) {
       this.setDisconnected();
       return;
     }
@@ -227,6 +232,10 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
   ): Promise<ZcashPublicKey | null> {
     const provider = await this.requireProvider();
     return this.requestPublicKey(provider, options);
+  }
+
+  async checkLendingMcaAccount(): Promise<ZcashLendingMcaStatus | null> {
+    return this.request<ZcashLendingMcaStatus | null>('zcash_checkLendingMcaAccount');
   }
 
   async signMessage(
