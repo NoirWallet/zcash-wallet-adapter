@@ -84,6 +84,10 @@ export class NoirZcashWalletAdapter extends BaseZcashWalletAdapter {
       this.setDisconnected();
       return;
     }
+    if (Array.isArray(addresses) && addresses.length === 0) {
+      this.setDisconnected();
+      return;
+    }
     if (!isAddressResult(addresses)) {
       this.reportError(
         new WalletProviderError(

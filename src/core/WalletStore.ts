@@ -136,10 +136,13 @@ export class WalletStore extends TypedEventEmitter<WalletStoreEventMap> {
 
   async disconnect(): Promise<void> {
     const adapter = this.current;
-    if (adapter) await adapter.disconnect();
-    this.current = null;
-    this.storage?.removeItem(this.storageKey);
-    this.publishSnapshot();
+    try {
+      if (adapter) await adapter.disconnect();
+    } finally {
+      this.current = null;
+      this.storage?.removeItem(this.storageKey);
+      this.publishSnapshot();
+    }
   }
 
   async autoConnect(): Promise<ZcashWalletAdapter | null> {
@@ -195,7 +198,13 @@ export class WalletStore extends TypedEventEmitter<WalletStoreEventMap> {
     adapter: ZcashWalletAdapter,
     event: E,
   ): RemoveAdapterBinding {
-    const listener = (_payload: WalletAdapterEventMap[E]): void => this.publishSnapshot();
+    const listener = (_payload: WalletAdapterEventMap[E]): void => {
+      if (event === 'disconnect' && this.current === adapter) {
+        this.current = null;
+        this.storage?.removeItem(this.storageKey);
+      }
+      this.publishSnapshot();
+    };
     adapter.on(event, listener);
     return () => adapter.off(event, listener);
   }

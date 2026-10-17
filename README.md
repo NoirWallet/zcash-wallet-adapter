@@ -547,7 +547,7 @@ noir.on('accountChanged', ({ shielded, transparent, accounts }) => {
 });
 ```
 
-Transaction and signing failures emit `error` without clearing the active connection. The adapter only enters the disconnected state after an explicit provider `disconnect` event, an `accountsChanged` event carrying `null`, or an application call to `disconnect()`.
+Transaction and signing failures emit `error` without clearing the active connection. A provider `disconnect`, an empty or `null` `accountsChanged` event, or an application `disconnect()` clears the connection.
 
 ## Zcash-specific considerations
 
