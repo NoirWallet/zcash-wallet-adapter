@@ -2,7 +2,6 @@ import {
   UserRejectedError,
   WalletInvalidInputError,
   WalletMethodNotSupportedError,
-  WalletStore,
 } from '../../core/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -11,13 +10,11 @@ import {
   ZCASH_WALLETCONNECT_CHAIN_ID,
   ZCASH_WALLETCONNECT_EVENTS,
   ZCASH_WALLETCONNECT_METHODS,
-  ZCASH_WALLETCONNECT_OPTIONAL_METHODS,
   type WalletConnectSession,
   type WalletConnectSignClient,
 } from './WalletConnectZcashWalletAdapter.js';
 
 const account = `${ZCASH_WALLETCONNECT_CHAIN_ID}:t1WalletConnectAddress`;
-type ClientEvent = Parameters<Parameters<WalletConnectSignClient['on']>[1]>[0];
 
 function createSession(topic = 'session-topic'): WalletConnectSession {
   return {
@@ -38,7 +35,7 @@ function createSession(topic = 'session-topic'): WalletConnectSession {
 }
 
 class MockSignClient implements WalletConnectSignClient {
-  readonly listeners = new Map<string, Set<(event: ClientEvent) => void>>();
+  readonly listeners = new Map<string, Set<(event: { topic: string; params?: never }) => void>>();
   readonly requests: Array<{
     topic: string;
     chainId: string;
@@ -83,41 +80,27 @@ class MockSignClient implements WalletConnectSignClient {
     }
     if (options.request.method === 'zcash_signMessage') {
       return {
-        signature: `1f${'00'.repeat(64)}`,
-        publicKey: `02${'ab'.repeat(32)}`,
+        signature: '1f00',
+        publicKey: '02abcdef',
         address: 't1DerivedAddress',
         signingMode: 'derived',
         originAddress: 't1WalletConnectAddress',
       } as T;
-    }
-    if (options.request.method === 'zcash_getPublicKey') {
-      return {
-        publicKey: `02${'ab'.repeat(32)}`,
-        address: 't1DerivedAddress',
-        signingMode: 'derived',
-        originAddress: 't1WalletConnectAddress',
-      } as T;
-    }
-    if (options.request.method === 'zcash_checkLendingMcaAccount') {
-      return { mcaId: 'mca.near', publicKey: `02${'ab'.repeat(32)}`, signingMode: 'derived' } as T;
-    }
-    if (options.request.method === 'zcash_getMaxTransfer') {
-      return { maxAmount: '1.25', fee: '0.01' } as T;
     }
     throw new Error(`Unsupported method: ${options.request.method}`);
   }
 
-  on(event: string, listener: (event: ClientEvent) => void): void {
+  on(event: string, listener: (event: { topic: string; params?: never }) => void): void {
     const listeners = this.listeners.get(event) ?? new Set();
     listeners.add(listener);
     this.listeners.set(event, listeners);
   }
 
-  off(event: string, listener: (event: ClientEvent) => void): void {
+  off(event: string, listener: (event: { topic: string; params?: never }) => void): void {
     this.listeners.get(event)?.delete(listener);
   }
 
-  emit(event: string, payload: ClientEvent): void {
+  emit(event: string, payload: { topic: string; params?: never }): void {
     for (const listener of this.listeners.get(event) ?? []) listener(payload);
   }
 }
@@ -181,13 +164,6 @@ describe('WalletConnectZcashWalletAdapter', () => {
           chains: [ZCASH_WALLETCONNECT_CHAIN_ID],
           methods: [...ZCASH_WALLETCONNECT_METHODS],
           events: [...ZCASH_WALLETCONNECT_EVENTS],
-        },
-      },
-      optionalNamespaces: {
-        bip122: {
-          chains: [ZCASH_WALLETCONNECT_CHAIN_ID],
-          methods: [...ZCASH_WALLETCONNECT_OPTIONAL_METHODS],
-          events: [],
         },
       },
     });
@@ -255,6 +231,7 @@ describe('WalletConnectZcashWalletAdapter', () => {
             amount: '0.25',
             memo: 'WalletConnect transfer',
             fundingSource: 'shielded',
+            type: 'shielded',
           },
         },
       },
@@ -286,6 +263,7 @@ describe('WalletConnectZcashWalletAdapter', () => {
           to: 'u1Recipient',
           amount: '1',
           fundingSource: 'shielded',
+          type: 'shielded',
         },
       },
     });
@@ -325,8 +303,8 @@ describe('WalletConnectZcashWalletAdapter', () => {
     await expect(
       adapter.signMessage('hello', { signingMode: 'derived' }),
     ).resolves.toMatchObject({
-      signature: `1f${'00'.repeat(64)}`,
-      publicKey: `02${'ab'.repeat(32)}`,
+      signature: '1f00',
+      publicKey: '02abcdef',
       address: 't1DerivedAddress',
       signingMode: 'derived',
       originAddress: 't1WalletConnectAddress',
@@ -348,172 +326,5 @@ describe('WalletConnectZcashWalletAdapter', () => {
     await expect(
       adapter.signTransaction({ pczt: 'cGN6dA==', network: 'mainnet' }),
     ).rejects.toBeInstanceOf(WalletMethodNotSupportedError);
-  });
-
-  it('rejects sessions that mix multiple wallet accounts and restores a later valid session', async () => {
-    const client = new MockSignClient();
-    const invalid = createSession('invalid-topic');
-    invalid.namespaces.bip122!.accounts = [
-      `${ZCASH_WALLETCONNECT_CHAIN_ID}:t1First`,
-      `${ZCASH_WALLETCONNECT_CHAIN_ID}:u1First`,
-      `${ZCASH_WALLETCONNECT_CHAIN_ID}:t1Second`,
-      `${ZCASH_WALLETCONNECT_CHAIN_ID}:u1Second`,
-    ];
-    client.sessions = [
-      { topic: 'corrupt-topic', namespaces: null } as unknown as WalletConnectSession,
-      invalid,
-      createSession('valid-topic'),
-    ];
-    const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
-
-    await expect(adapter.connect({ silent: true })).resolves.toMatchObject({
-      transparent: 't1WalletConnectAddress',
-    });
-    expect(adapter.connection?.accounts).toHaveLength(1);
-    expect(client.connect).not.toHaveBeenCalled();
-  });
-
-  it('clears connection on empty accounts and does not restore the stale session', async () => {
-    const client = new MockSignClient();
-    client.sessions = [createSession()];
-    const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
-    const items = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => items.get(key) ?? null,
-      setItem: (key: string, value: string) => { items.set(key, value); },
-      removeItem: (key: string) => { items.delete(key); },
-    };
-    const store = new WalletStore({ storage });
-    store.registerAdapter(adapter);
-    await store.connect(adapter.name);
-    expect(items.get('zcash:lastConnectedWallet')).toBe(adapter.name);
-
-    client.emit('session_event', {
-      topic: 'session-topic',
-      params: {
-        chainId: ZCASH_WALLETCONNECT_CHAIN_ID,
-        event: { name: 'accountsChanged', data: [] },
-      },
-    });
-    expect(adapter.isConnected).toBe(false);
-    expect(store.currentAdapter).toBeNull();
-    expect(items.has('zcash:lastConnectedWallet')).toBe(false);
-    await expect(adapter.connect({ silent: true })).rejects.toThrow();
-    const reloaded = new WalletStore({ storage });
-    reloaded.registerAdapter(new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client }));
-    await expect(reloaded.autoConnect()).resolves.toBeNull();
-  });
-
-  it('rejects an account switch in session_update', async () => {
-    const client = new MockSignClient();
-    client.sessions = [createSession()];
-    const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
-    await adapter.connect();
-    client.emit('session_update', {
-      topic: 'session-topic',
-      params: {
-        namespaces: {
-          bip122: {
-            chains: [ZCASH_WALLETCONNECT_CHAIN_ID],
-            accounts: [`${ZCASH_WALLETCONNECT_CHAIN_ID}:u1NewAddress`],
-            methods: [...ZCASH_WALLETCONNECT_METHODS],
-            events: [...ZCASH_WALLETCONNECT_EVENTS],
-          },
-        },
-      },
-    });
-    expect(adapter.isConnected).toBe(false);
-    expect(adapter.shieldedAddress).toBeNull();
-    await expect(adapter.connect({ silent: true })).rejects.toThrow();
-  });
-
-  it('disconnects on conflicting accountsChanged account and address', async () => {
-    const client = new MockSignClient();
-    const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
-    await adapter.connect();
-
-    client.emit('session_event', {
-      topic: 'session-topic',
-      params: {
-        chainId: ZCASH_WALLETCONNECT_CHAIN_ID,
-        event: {
-          name: 'accountsChanged',
-          data: { account, address: 't1DifferentAddress' },
-        },
-      },
-    });
-    expect(adapter.isConnected).toBe(false);
-  });
-
-  it('requests identity and optional RHEA methods with the agreed object params', async () => {
-    const client = new MockSignClient();
-    client.approvedSession.namespaces.bip122!.methods.push(...ZCASH_WALLETCONNECT_OPTIONAL_METHODS);
-    const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
-    await adapter.connect();
-
-    await expect(adapter.getPublicKey({ signingMode: 'derived' })).resolves.toMatchObject({
-      publicKey: `02${'ab'.repeat(32)}`, signingMode: 'derived',
-    });
-    await expect(adapter.checkLendingMcaAccount()).resolves.toMatchObject({ mcaId: 'mca.near' });
-    await expect(adapter.getMaxTransfer({ to: 'u1Recipient' })).resolves.toEqual({
-      maxAmount: '1.25', fee: '0.01',
-    });
-    expect(client.requests.map(({ request }) => request)).toEqual([
-      { method: 'zcash_getPublicKey', params: { signingMode: 'derived' } },
-      { method: 'zcash_checkLendingMcaAccount', params: {} },
-      { method: 'zcash_getMaxTransfer', params: { to: 'u1Recipient' } },
-    ]);
-    await expect(adapter.signMessage('hello', { signingMode: 'other' as 'current' }))
-      .rejects.toBeInstanceOf(WalletInvalidInputError);
-  });
-
-  it('rejects malformed wallet identity responses and unavailable optional methods', async () => {
-    const client = new MockSignClient();
-    const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
-    await adapter.connect();
-
-    await expect(adapter.checkLendingMcaAccount()).resolves.toBeNull();
-    await expect(adapter.getMaxTransfer({ to: 't1Recipient' }))
-      .rejects.toBeInstanceOf(WalletMethodNotSupportedError);
-    vi.spyOn(client, 'request').mockResolvedValueOnce({
-      publicKey: 'not-a-public-key',
-      address: 't1DerivedAddress',
-      signingMode: 'derived',
-    });
-    await expect(adapter.getPublicKey({ signingMode: 'derived' })).rejects.toThrow(
-      'invalid Zcash identity',
-    );
-    vi.spyOn(client, 'request').mockResolvedValueOnce({
-      signature: 'bad-signature',
-      publicKey: `02${'ab'.repeat(32)}`,
-      address: 't1DerivedAddress',
-      signingMode: 'derived',
-    });
-    await expect(adapter.signMessage('hello', { signingMode: 'derived' })).rejects.toThrow(
-      'invalid Zcash message signature',
-    );
-  });
-
-  it('does not restore a locally disconnected session when the remote disconnect fails', async () => {
-    const client = new MockSignClient();
-    client.sessions = [createSession()];
-    client.disconnect.mockRejectedValueOnce(new Error('relay unavailable'));
-    const items = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => items.get(key) ?? null,
-      setItem: (key: string, value: string) => { items.set(key, value); },
-      removeItem: (key: string) => { items.delete(key); },
-    };
-    const store = new WalletStore({ storage });
-    store.registerAdapter(new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client }));
-    await store.connect('noir-zcash-walletconnect');
-
-    await expect(store.disconnect()).rejects.toThrow('relay unavailable');
-    expect(store.getSnapshot().isConnected).toBe(false);
-    expect(items.has('zcash:lastConnectedWallet')).toBe(false);
-
-    const reloaded = new WalletStore({ storage });
-    reloaded.registerAdapter(new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client }));
-    await expect(reloaded.autoConnect()).resolves.toBeNull();
   });
 });

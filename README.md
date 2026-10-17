@@ -89,20 +89,11 @@ await store.autoConnect();
 
 The WalletConnect adapter follows the `bip122` Zcash namespace used by the
 Noir WalletConnect demo. It requests the Zcash mainnet chain
-`bip122:00040fe8ec8471911baa1db1266ea15d`. A new connection requires:
+`bip122:00040fe8ec8471911baa1db1266ea15d` and these methods:
 
 - `zcash_getAddress`
 - `zcash_getBalance`
 - `zcash_transfer`
-- `zcash_signMessage`
-- `zcash_getPublicKey`
-
-It also requests `zcash_checkLendingMcaAccount` and `zcash_getMaxTransfer` as
-optional methods. A wallet should approve only methods it implements. MCA
-status returns `null` when the optional method is unavailable; exact Max
-requires `zcash_getMaxTransfer` and otherwise fails explicitly. RHEA identity
-uses `getPublicKey({ signingMode: 'derived' })`; ordinary signing and public-key
-queries default to `current`, matching the injected provider.
 
 Import it from the dedicated entry point so applications that only use the
 injected Noir provider do not load WalletConnect:
@@ -143,8 +134,17 @@ const transparentTxid = await walletConnect.signAndSendTransaction({
 });
 ```
 
-WalletConnect requires a wallet-side WalletKit implementation. The injected
-Noir provider alone cannot respond to a pairing URI.
+The reference Noir extension accepts the pairing URI through its content
+script. Use this callback when that extension is the target wallet:
+
+```ts
+onDisplayUri: (uri) => {
+  window.postMessage(
+    { type: 'NOIR_WC_PAIR', uri, projectId },
+    window.location.origin,
+  );
+},
+```
 
 The adapter also emits `displayUri` with the same URI. The ready-to-use
 `WalletSelector` consumes that event and renders its built-in pairing QR code.
@@ -153,11 +153,10 @@ for a custom QR interface. WalletConnect sessions are persisted by
 `SignClient`, so `WalletStore.autoConnect()` restores an approved session
 without displaying another QR code.
 
-WalletConnect requests use object parameters. `zcash_transfer` sends
-`{ to, amount, memo?, fundingSource }`, returns a transaction id, and defaults
-to shielded funding. Each session must contain at most one transparent and one
-shielded address for the same wallet account. Changing wallet accounts requires
-a new session. PCZT signing is not exposed over WalletConnect.
+`zcash_transfer` accepts both `fundingSource: 'shielded'` and
+`'transparent'`. Omitting `fundingSource` keeps the previous transparent
+default. PCZT signing is still not exposed over WalletConnect and fails
+explicitly.
 
 ## RHEA cross-chain SDK entries
 
@@ -548,7 +547,7 @@ noir.on('accountChanged', ({ shielded, transparent, accounts }) => {
 });
 ```
 
-Transaction and signing failures emit `error` without clearing the active connection. A provider `disconnect`, an empty or `null` `accountsChanged` event, or an application `disconnect()` clears the connection. A WalletConnect account change requires a new session.
+Transaction and signing failures emit `error` without clearing the active connection. A provider `disconnect`, an empty or `null` `accountsChanged` event, or an application `disconnect()` clears the connection.
 
 ## Zcash-specific considerations
 

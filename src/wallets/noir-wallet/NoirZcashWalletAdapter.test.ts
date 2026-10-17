@@ -169,17 +169,6 @@ describe('NoirZcashWalletAdapter', () => {
     expect(provider.requests.some(({ method }) => method === 'zcash_requestAccounts')).toBe(false);
   });
 
-  it('clears stale account data when Noir Wallet locks', async () => {
-    const provider = new MockProvider();
-    const adapter = new NoirZcashWalletAdapter({ provider });
-    await adapter.connect();
-
-    provider.emit('accountsChanged', []);
-
-    expect(adapter.isConnected).toBe(false);
-    expect(adapter.address).toBeNull();
-  });
-
   it('keeps public-key lookup available as an explicit identity operation', async () => {
     const provider = new MockProvider();
     const adapter = new NoirZcashWalletAdapter({ provider });
@@ -339,6 +328,48 @@ describe('NoirZcashWalletAdapter', () => {
 });
 
 describe('WalletStore', () => {
+  it('clears the selected wallet when the provider removes all accounts', async () => {
+    const provider = new MockProvider();
+    const adapter = new NoirZcashWalletAdapter({ provider });
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    };
+    const store = new WalletStore({ storage });
+    store.registerAdapter(adapter);
+    await store.connect(adapter.name);
+
+    provider.emit('accountsChanged', []);
+
+    expect(adapter.isConnected).toBe(false);
+    expect(adapter.address).toBeNull();
+    expect(store.currentAdapter).toBeNull();
+    expect(store.getSnapshot()).toMatchObject({ isConnected: false, address: null });
+    expect(values.has('zcash:lastConnectedWallet')).toBe(false);
+  });
+
+  it('clears the selected wallet when disconnect rejects', async () => {
+    const adapter = new NoirZcashWalletAdapter({ provider: new MockProvider() });
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    };
+    const store = new WalletStore({ storage });
+    store.registerAdapter(adapter);
+    await store.connect(adapter.name);
+    vi.spyOn(adapter, 'disconnect').mockRejectedValueOnce(new Error('disconnect failed'));
+
+    await expect(store.disconnect()).rejects.toThrow('disconnect failed');
+
+    expect(store.currentAdapter).toBeNull();
+    expect(store.getSnapshot()).toMatchObject({ isConnected: false, address: null });
+    expect(values.has('zcash:lastConnectedWallet')).toBe(false);
+  });
+
   it('registers, persists and silently reconnects a Zcash adapter', async () => {
     const provider = new MockProvider();
     const adapter = new NoirZcashWalletAdapter({ provider });
