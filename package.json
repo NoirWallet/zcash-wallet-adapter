@@ -1,6 +1,6 @@
 {
   "name": "@rhea-finance/zcash-wallet-adapter",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.3",
   "type": "module",
   "sideEffects": [
     "./styles.css"
