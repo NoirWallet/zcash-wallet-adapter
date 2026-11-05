@@ -87,6 +87,8 @@ await store.autoConnect();
 
 ## WalletConnect
 
+For mobile wallet teams (such as Zodl), see the [Zcash mobile wallet WalletConnect integration guide](docs/mobile-wallet-walletconnect.en.md) for pairing, wallet-side RPC implementation, and acceptance testing.
+
 The WalletConnect adapter follows the `bip122` Zcash namespace used by the
 Noir WalletConnect demo. It requests the Zcash mainnet chain
 `bip122:00040fe8ec8471911baa1db1266ea15d` and these methods:
