@@ -90,32 +90,149 @@ const approvedNamespace = {
 
 Return both shielded and transparent addresses where available so the corresponding DApp fields can be populated. The current adapter maps these addresses to one logical account; do not mix multiple independent wallet accounts. Validate the network and actual receiver support in the wallet. A Unified Address prefix alone does not guarantee a particular receiver type.
 
-## 4. Wallet Implementation Flow
+## 4. Mobile Wallet Implementation
 
-Use the official WalletKit SDK for your platform. Follow its documentation for dependency versions, initialization, and storage. The following is platform-independent pseudocode, not compilable native SDK code.
+### React Native / TypeScript WalletKit Starter
 
-```text
-App startup
-  -> Initialize one shared wallet client with project ID and wallet metadata
-  -> Register proposal, request, deletion, and expiration listeners
-  -> Restore sessions and pending requests
+Install the wallet-side SDKs in the **mobile wallet project**, not this adapter. Follow the [React Native WalletKit installation](https://docs.walletconnect.com/wallets/react-native/installation) for storage, polyfills, and app lifecycle before using this example:
 
-Receive a scanned, pasted, or deep-linked URI
-  -> Validate the URI and call pair(uri)
-  -> Receive session_proposal
-  -> Validate chain, methods, events, and available accounts
-  -> Show permissions to the user
-  -> Approved: approveSession(id, namespaces)
-  -> Rejected or incompatible: rejectSession(id, reason)
-
-Receive session_request
-  -> Validate topic, session expiry, chainId, authorized method, and account
-  -> Dispatch to the wallet's Zcash implementation
-  -> Wait for unlock, user approval, and processing as needed
-  -> respondSessionRequest(topic, { id, jsonrpc: '2.0', result OR error })
+```bash
+pnpm add @reown/walletkit @walletconnect/core @walletconnect/react-native-compat
 ```
 
-Implementation requirements:
+Install the additional React Native storage and polyfill dependencies listed in the platform guide. Import `@walletconnect/react-native-compat` **before** WalletKit or Core in your application's entry point.
+
+The following shows the WalletConnect boundary. `selectAccountAndConfirm`, `confirmAndBroadcast`, and `confirmAndSign` are **wallet application functions you must implement** using your existing Zcash wallet engine and screens. Replace the metadata, project ID, and URI input with your application's values.
+
+```ts
+import '@walletconnect/react-native-compat';
+import { Core } from '@walletconnect/core';
+import { WalletKit } from '@reown/walletkit';
+
+const CHAIN = 'bip122:00040fe8ec8471911baa1db1266ea15d';
+const METHODS = [
+  'zcash_getAddress', 'zcash_getBalance',
+  'zcash_transfer', 'zcash_signMessage',
+];
+const EVENTS = ['accountsChanged', 'chainChanged'];
+
+const walletKit = await WalletKit.init({
+  core: new Core({ projectId: 'YOUR_REOWN_PROJECT_ID' }),
+  metadata: {
+    name: 'Your Zcash Wallet',
+    description: 'Zcash mobile wallet',
+    url: 'https://your-wallet.example',
+    icons: ['https://your-wallet.example/icon.png'],
+  },
+});
+
+// Register handlers once at app startup, before accepting a QR or deep link.
+walletKit.on('session_proposal', async ({ id, params }) => {
+  const requested = params.requiredNamespaces.bip122;
+  const supported = requested?.chains?.includes(CHAIN) &&
+    requested.methods.every((method) => METHODS.includes(method)) &&
+    requested.events.every((event) => EVENTS.includes(event));
+  if (!supported) {
+    await walletKit.rejectSession({
+      id, reason: { code: 5100, message: 'Unsupported Zcash permissions' },
+    });
+    return;
+  }
+
+  // Show the DApp origin, requested permissions, network, and account.
+  const account = await selectAccountAndConfirm(params.proposer.metadata);
+  if (!account) {
+    await walletKit.rejectSession({
+      id, reason: { code: 5000, message: 'User rejected' },
+    });
+    return;
+  }
+  // Both addresses must belong to the same authorized logical account.
+  const addresses = [account.shieldedAddress, account.transparentAddress]
+    .filter((address): address is string => Boolean(address));
+  await walletKit.approveSession({
+    id,
+    namespaces: {
+      bip122: {
+        chains: [CHAIN],
+        methods: METHODS,
+        events: EVENTS,
+        accounts: addresses.map((address) => `${CHAIN}:${address}`),
+      },
+    },
+  });
+});
+
+// Call this with the complete URI returned by the QR scanner or app link.
+export async function openPairingUri(uri: string) {
+  if (!uri.startsWith('wc:')) throw new Error('Invalid pairing URI');
+  await walletKit.pair({ uri });
+}
+```
+
+Persist the authorized account *per session topic* after approval and restore it on app startup. Do not use whichever account is currently selected in the wallet for an old DApp session. Register request listeners before calling `pair`, including when a deep link launches the app from a cold start. WalletKit owns relay transport and session persistence; the wallet owns account authorization and signing.
+
+Dispatch each request to your existing wallet engine. The request's `topic` and `id` identify the response, and `params.chainId` must match the approved chain. The example below is a handler outline: `authorizedAccountForSession` must read the actual approved WalletKit session and your persisted account mapping; `readBalance`, `confirmAndBroadcast`, and `confirmAndSign` must be implemented by the mobile wallet.
+
+```ts
+walletKit.on('session_request', async ({ topic, id, params }) => {
+  try {
+    const account = await authorizedAccountForSession(topic);
+    if (!account || params.chainId !== CHAIN) {
+      throw new Error('Unauthorized session or network');
+    }
+    const { method, params: input } = params.request;
+    if (!METHODS.includes(method) || !account.allowedMethods.includes(method)) {
+      throw new Error('Method not authorized for this session');
+    }
+
+    let result: unknown;
+    switch (method) {
+      case 'zcash_getAddress':
+        result = {
+          account: `${CHAIN}:${account.shieldedAddress ?? account.transparentAddress}`,
+          address: account.shieldedAddress ?? account.transparentAddress,
+          type: account.shieldedAddress ? 'shielded' : 'transparent',
+        };
+        break;
+      case 'zcash_getBalance':
+        result = await readBalance(account); // Decimal ZEC strings; see Section 5.
+        break;
+      case 'zcash_transfer':
+        // Validate recipient, decimal amount, fees, memo, and funding source.
+        // Show confirmation, broadcast once, then return the real txid.
+        result = { txid: await confirmAndBroadcast(account, input, `${topic}:${id}`) };
+        break;
+      case 'zcash_signMessage':
+        // Show the original text and mode; return signature, publicKey,
+        // transparent address, and signingMode in the format in Section 5.
+        result = await confirmAndSign(account, input);
+        break;
+    }
+    await walletKit.respondSessionRequest({
+      topic, response: { id, jsonrpc: '2.0', result },
+    });
+  } catch (error) {
+    await walletKit.respondSessionRequest({
+      topic,
+      response: {
+        id, jsonrpc: '2.0',
+        error: { code: 5000, message: error instanceof Error ? error.message : 'Request failed' },
+      },
+    });
+  }
+});
+```
+
+These wallet functions are intentionally not part of this repository. They must validate the request fields and obtain user approval; returning `txid` without a real broadcast or returning a dummy signature will not pass the acceptance tests. Store `topic:id -> txid` across process restarts so a redelivered request cannot broadcast twice. Use the SDK's standard rejection/error helpers where available, and distinguish user rejection, invalid parameters, and unsupported methods in production. On `session_delete` or expiry, remove the topic's account mapping and pending approvals; provide a connected-DApps screen to call `disconnectSession` when the user revokes access.
+
+### Native iOS and Android
+
+The wire contract in Sections 3 and 5 is platform-independent. If the wallet is native rather than React Native, use the official [iOS](https://docs.walletconnect.com/wallets/ios/installation) or [Android](https://docs.walletconnect.com/wallets/android/installation) WalletKit SDK and implement the same steps: initialize before processing a scanned/deep-linked `wc:` URI, approve a `bip122` proposal with CAIP-10 accounts, dispatch the four Zcash methods, return a JSON-RPC result/error for each request, and manage session deletion and expiry. Do not copy the TypeScript APIs into Swift or Kotlin; follow the platform SDK's event and response signatures.
+
+### Lifecycle and Safety
+
+
 
 - Register listeners before pairing. Pairing does not imply session approval.
 - Read requests may expose only authorized account information, not arbitrary wallet accounts.
@@ -313,9 +430,9 @@ Record device, wallet and DApp versions, actual results, and screenshots or reco
 
 Follow the official WalletConnect documentation for wallet initialization, pairing, proposal approval, request responses, and platform APIs:
 
-- [React Native wallet usage](https://github.com/WalletConnect/walletconnect-docs/blob/main/docs/walletkit/react-native/usage.mdx)
-- [Android wallet usage](https://github.com/WalletConnect/walletconnect-docs/blob/main/docs/walletkit/android/usage.mdx)
-- [WalletKit documentation, including other platforms](https://github.com/WalletConnect/walletconnect-docs/tree/main/docs/walletkit)
+- [React Native WalletKit usage](https://docs.walletconnect.com/wallets/react-native/usage)
+- [Android WalletKit installation](https://docs.walletconnect.com/wallets/android/installation)
+- [iOS WalletKit installation](https://docs.walletconnect.com/wallets/ios/installation)
 - [Session namespace specification](https://github.com/WalletConnect/walletconnect-specs/blob/main/docs/specs/clients/sign/namespaces.md)
 
 This guide describes the [WalletConnect adapter](../src/wallets/walletconnect/WalletConnectZcashWalletAdapter.ts) and its [tests](../src/wallets/walletconnect/WalletConnectZcashWalletAdapter.test.ts) as of this document's commit. It also draws on the all-sdk-demo Zcash wallet integration specification and message-signing implementation. Pin the adapter version or commit for partner integration. Agree explicitly on versions of custom RPC and signature formats; SDK upgrades alone do not guarantee compatibility.
