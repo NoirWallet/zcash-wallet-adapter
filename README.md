@@ -87,7 +87,7 @@ await store.autoConnect();
 
 ## WalletConnect
 
-For mobile wallet teams (such as Zodl), see the [Zcash mobile wallet WalletConnect integration guide](docs/mobile-wallet-walletconnect.en.md) for pairing, wallet-side RPC implementation, and acceptance testing.
+For React DApps, start with the [WalletConnect React integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/downloads/WalletConnect-Guide.md) for the built-in QR selector or a headless UI. Mobile wallet teams (such as Zodl) can use the [mobile wallet integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/mobile-wallet-walletconnect.en.md) for the wallet-side protocol. Use the [WalletConnect acceptance specification](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/walletconnect-acceptance.en.md) to test an integration with a compatible wallet.
 
 The WalletConnect adapter follows the `bip122` Zcash namespace used by the
 Noir WalletConnect demo. It requests the Zcash mainnet chain
@@ -96,6 +96,7 @@ Noir WalletConnect demo. It requests the Zcash mainnet chain
 - `zcash_getAddress`
 - `zcash_getBalance`
 - `zcash_transfer`
+- `zcash_signMessage`
 
 Import it from the dedicated entry point so applications that only use the
 injected Noir provider do not load WalletConnect:
@@ -156,8 +157,8 @@ for a custom QR interface. WalletConnect sessions are persisted by
 without displaying another QR code.
 
 `zcash_transfer` accepts both `fundingSource: 'shielded'` and
-`'transparent'`. Omitting `fundingSource` keeps the previous transparent
-default. PCZT signing is still not exposed over WalletConnect and fails
+`'transparent'`. Omitting `fundingSource` defaults to shielded funding. PCZT
+signing is still not exposed over WalletConnect and fails
 explicitly.
 
 ## RHEA cross-chain SDK entries
@@ -355,7 +356,6 @@ import {
   NoirZcashWalletAdapter,
   WalletProvider,
 } from '@rhea-finance/zcash-wallet-adapter';
-import '@rhea-finance/zcash-wallet-adapter/styles.css';
 
 const adapters = [new NoirZcashWalletAdapter({ network: 'mainnet' })];
 
@@ -370,6 +370,10 @@ export function App() {
 
 The UI-ready `WalletProvider` renders `WalletSelector` automatically. The application does not need to import or mount the selector separately. By default, selecting a wallet calls `store.connect(walletName)`.
 
+UI components import their stylesheet automatically, including on the first
+render. A separate `styles.css` import is optional and remains supported for
+applications that want to control stylesheet ordering.
+
 `WalletSelector` displays the adapters passed to `WalletProvider`; it does not
 automatically discover WalletConnect wallets. To show both the injected Noir
 wallet and the WalletConnect transport, register both adapters:
@@ -382,7 +386,6 @@ import {
 import {
   WalletConnectZcashWalletAdapter,
 } from '@rhea-finance/zcash-wallet-adapter/walletconnect';
-import '@rhea-finance/zcash-wallet-adapter/styles.css';
 
 const projectId = 'YOUR_REOWN_PROJECT_ID';
 const adapters = [

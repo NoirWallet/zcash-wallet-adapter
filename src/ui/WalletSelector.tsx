@@ -1,3 +1,6 @@
+// Keep the selector's CSS in the same module graph as its first render.
+import '../../styles.css';
+
 import {
   useEffect,
   useId,
