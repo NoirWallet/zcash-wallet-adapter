@@ -86,8 +86,7 @@
 .nzwa-modal__close:focus-visible,
 .nzwa-wallet-row__select:focus-visible,
 .nzwa-wallet-row__install:focus-visible,
-.nzwa-pairing__button:focus-visible,
-.nzwa-pairing__open:focus-visible {
+.nzwa-pairing__button:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--nzwa-accent) 45%, transparent);
   outline-offset: 2px;
 }
@@ -391,12 +390,11 @@
 
 .nzwa-pairing__actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
-.nzwa-pairing__button,
-.nzwa-pairing__open {
+.nzwa-pairing__button {
   display: inline-flex;
   min-width: 0;
   height: 42px;
@@ -420,16 +418,6 @@
 
 .nzwa-pairing__button:hover {
   background: var(--nzwa-color-panel);
-}
-
-.nzwa-pairing__open {
-  border-color: var(--nzwa-color-button);
-  background: var(--nzwa-color-button);
-  color: var(--nzwa-color-button-text);
-}
-
-.nzwa-pairing__open:hover {
-  border-color: var(--nzwa-accent-strong);
 }
 
 .nzwa-spinner {

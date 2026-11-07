@@ -38,6 +38,7 @@ export interface WalletSelectorLabels {
   pairingError: string;
   copyLink: string;
   copied: string;
+  /** @deprecated The pairing dialog no longer renders an open-wallet link. */
   openWallet: string;
 }
 
@@ -312,9 +313,6 @@ export function WalletSelectorModal({
               >
                 {pairingCopied ? labels.copied : labels.copyLink}
               </button>
-              <a className="nzwa-pairing__open" href={pairingUri}>
-                {labels.openWallet}
-              </a>
             </div>
           </div>
         ) : (
