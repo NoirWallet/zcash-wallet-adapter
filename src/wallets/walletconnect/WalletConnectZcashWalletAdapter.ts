@@ -20,18 +20,15 @@ import {
 export const ZCASH_WALLETCONNECT_CHAIN_ID =
   'bip122:00040fe8ec8471911baa1db1266ea15d' as const;
 
+/** Documentation revision of this application's RPC convention, not a wire handshake. */
+export const ZCASH_WALLETCONNECT_PROTOCOL_REVISION = '2026-11-10' as const;
+export const ZCASH_WALLETCONNECT_ACCOUNT_ADDRESS_MAX_LENGTH = 128;
+
 export const ZCASH_WALLETCONNECT_METHODS = [
   'zcash_getAddress',
   'zcash_getBalance',
   'zcash_transfer',
   'zcash_signMessage',
-] as const;
-
-/** Methods required for a usable Zcash WalletConnect session. */
-const ZCASH_WALLETCONNECT_REQUIRED_METHODS = [
-  'zcash_getAddress',
-  'zcash_getBalance',
-  'zcash_transfer',
 ] as const;
 
 export const ZCASH_WALLETCONNECT_EVENTS = [
@@ -47,7 +44,7 @@ export interface WalletConnectMetadata {
 }
 
 export interface WalletConnectNamespace {
-  chains?: string[];
+  chains: string[];
   accounts: string[];
   methods: string[];
   events: string[];
@@ -62,7 +59,7 @@ export interface WalletConnectSession {
   };
 }
 
-interface WalletConnectEventPayload {
+export interface WalletConnectEventPayload {
   topic: string;
   params?: {
     chainId?: string;
@@ -125,12 +122,11 @@ interface WalletConnectAddressResult {
 }
 
 interface WalletConnectBalanceResult {
-  confirmed?: string;
-  spendable?: string;
-  transparent?: string;
-  shielded?: string;
-  total?: string;
-  available?: string;
+  transparent: string;
+  shielded: string;
+  total: string;
+  spendable: string;
+  available: string;
 }
 
 interface WalletConnectTransferResult {
@@ -179,7 +175,16 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
   private readonly handleSessionEvent = (event: WalletConnectEventPayload): void => {
     if (event.topic !== this.session?.topic) return;
     const walletEvent = event.params?.event;
+    if (walletEvent?.name !== 'accountsChanged' && walletEvent?.name !== 'chainChanged') return;
+    if (event.params?.chainId !== ZCASH_WALLETCONNECT_CHAIN_ID) {
+      this.reportError(new ChainNotSupportedError('WalletConnect event has an invalid Zcash chain ID'));
+      return;
+    }
     if (walletEvent?.name === 'accountsChanged') {
+      if (walletEvent.data === null || (Array.isArray(walletEvent.data) && walletEvent.data.length === 0)) {
+        void this.disconnect().catch(() => undefined);
+        return;
+      }
       try {
         const connection = connectionFromEventData(walletEvent.data, this.session);
         this.setAccountChanged(connection, null);
@@ -191,14 +196,12 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
       return;
     }
     if (walletEvent?.name === 'chainChanged') {
-      const chainId = chainIdFromEventData(walletEvent.data);
-      if (
-        chainId === ZCASH_WALLETCONNECT_CHAIN_ID ||
-        chainId === 'zcash:mainnet' ||
-        chainId === 'mainnet'
-      ) {
+      const chainId = typeof walletEvent.data === 'string' ? walletEvent.data : null;
+      if (chainId === ZCASH_WALLETCONNECT_CHAIN_ID) {
         this.setChain('zcash:mainnet');
       } else {
+        // Invalidate locally before notifying listeners or awaiting relay cleanup.
+        void this.disconnect().catch(() => undefined);
         this.reportError(
           new ChainNotSupportedError(
             `WalletConnect switched to an unsupported Zcash chain: ${chainId ?? 'unknown'}`,
@@ -244,6 +247,7 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
     const session = this.session;
     const client = this.client;
     this.session = null;
+    this.setDisconnected();
     try {
       if (session && client) {
         await client.disconnect({
@@ -258,18 +262,28 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
       );
       this.reportError(normalized);
       throw normalized;
-    } finally {
-      this.setDisconnected();
     }
   }
 
   async getAddress(): Promise<WalletConnectAddressResult> {
+    const connection = this.connection;
     const result = await this.request<WalletConnectAddressResult>(
       'zcash_getAddress',
       {},
     );
-    if (!result || typeof result.address !== 'string') {
+    if (!isObject(result)) {
       throw new WalletProviderError('WalletConnect returned an invalid Zcash address');
+    }
+    const type = addressType(result.address);
+    const account = `${ZCASH_WALLETCONNECT_CHAIN_ID}:${result.address}`;
+    if (
+      this.connection !== connection ||
+      !this.session?.namespaces.bip122?.accounts.includes(account) ||
+      (result.address !== connection?.transparent && result.address !== connection?.shielded) ||
+      (result.account !== undefined && result.account !== account) ||
+      (result.type !== undefined && result.type !== type)
+    ) {
+      throw new WalletProviderError('WalletConnect returned an address inconsistent with the current authorized addresses');
     }
     return result;
   }
@@ -279,10 +293,22 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
       'zcash_getBalance',
       {},
     );
-    const transparent = result.transparent ?? result.confirmed ?? '0';
-    const shielded = result.shielded ?? '0';
-    const total = result.total ?? result.confirmed ?? transparent;
-    const spendable = result.spendable ?? result.available ?? total;
+    const fields = ['transparent', 'shielded', 'total', 'spendable', 'available'] as const;
+    if (!isObject(result) || fields.some((field) =>
+      typeof result[field] !== 'string' || !/^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/.test(result[field])
+    )) {
+      throw new WalletProviderError('WalletConnect balance requires transparent, shielded, total, spendable, and available as non-negative decimal ZEC strings');
+    }
+    const { transparent, shielded, total, spendable, available } = result;
+    const zatoshi = (amount: string): bigint => {
+      const [whole, fraction = ''] = amount.split('.');
+      return BigInt(whole!) * 100_000_000n + BigInt(fraction.padEnd(8, '0'));
+    };
+    if (zatoshi(total) !== zatoshi(transparent) + zatoshi(shielded) ||
+      zatoshi(spendable) > zatoshi(total) || zatoshi(available) > zatoshi(total)) {
+      throw new WalletProviderError('WalletConnect returned inconsistent Zcash balances');
+    }
+
     const account = this.connection?.accounts[0];
 
     return {
@@ -290,7 +316,7 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
       shielded,
       total,
       spendable,
-      available: result.available ?? spendable,
+      available,
       accounts: account
         ? [
             {
@@ -309,14 +335,6 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
     message: string | Uint8Array,
     options: ZcashSignMessageOptions = {},
   ): Promise<ZcashSignMessageResult> {
-    if (
-      this.session &&
-      !this.session.namespaces.bip122?.methods.includes('zcash_signMessage')
-    ) {
-      throw new WalletMethodNotSupportedError(
-        'This WalletConnect session does not include zcash_signMessage. Disconnect and reconnect to upgrade the session.',
-      );
-    }
     const normalizedMessage = normalizeWcMessage(message);
     if (normalizedMessage.length === 0) {
       throw new WalletInvalidInputError('Message must not be empty');
@@ -397,7 +415,19 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
         await this.onDisplayUri?.(uri);
       }
 
-      return this.useSession(await approval());
+      const approved = await approval();
+      try {
+        return this.useSession(approved);
+      } catch (error) {
+        // Do not leave an invalid fresh approval available for later restoration.
+        if (isObject(approved) && typeof approved.topic === 'string' && approved.topic) {
+          await client.disconnect({
+            topic: approved.topic,
+            reason: { code: 6000, message: 'Incompatible Zcash session permissions or addresses' },
+          }).catch(() => undefined);
+        }
+        throw error;
+      }
     } catch (error) {
       const normalized = normalizeProviderError(
         error,
@@ -410,11 +440,7 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
   }
 
   private useSession(session: WalletConnectSession): ZcashConnection {
-    if (!isCompatibleSession(session)) {
-      throw new WalletProviderError(
-        'WalletConnect session does not support the required Zcash methods',
-      );
-    }
+    validateSession(session);
     const connection = connectionFromSession(session);
     this.session = session;
     this.bindClientEvents();
@@ -445,18 +471,21 @@ export class WalletConnectZcashWalletAdapter extends BaseZcashWalletAdapter {
 
   private async request<T>(method: string, params: unknown): Promise<T> {
     if (!this.session) throw new WalletNotConnectedError();
+    const session = this.session;
     const client = await this.requireClient();
+    if (this.session !== session) throw new WalletNotConnectedError();
     try {
-      return await client.request<T>({
-        topic: this.session.topic,
+      const result = await client.request<T>({
+        topic: session.topic,
         chainId: ZCASH_WALLETCONNECT_CHAIN_ID,
         request: { method, params },
       });
+      if (this.session !== session) throw new WalletNotConnectedError();
+      return result;
     } catch (error) {
-      const normalized = normalizeProviderError(
-        error,
-        `WalletConnect request failed: ${method}`,
-      );
+      const normalized = isObject(error) && error.code === -32602
+        ? new WalletInvalidInputError(typeof error.message === 'string' ? error.message : 'Invalid WalletConnect request parameters', error)
+        : normalizeProviderError(error, `WalletConnect request failed: ${method}`);
       this.reportError(normalized);
       throw normalized;
     }
@@ -489,39 +518,66 @@ function defaultMetadata(): WalletConnectMetadata {
 }
 
 function isCompatibleSession(session: WalletConnectSession): boolean {
+  try {
+    validateSession(session);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateSession(session: WalletConnectSession): void {
+  if (!isObject(session) || typeof session.topic !== 'string' || !session.topic || !isObject(session.namespaces)) {
+    throw new WalletProviderError('WalletConnect returned an invalid session');
+  }
   const namespace = session.namespaces.bip122;
-  if (!namespace) return false;
-  const supportsChain =
-    namespace.chains?.includes(ZCASH_WALLETCONNECT_CHAIN_ID) === true ||
-    namespace.accounts.some((account) =>
-      account.startsWith(`${ZCASH_WALLETCONNECT_CHAIN_ID}:`),
-    );
-  return (
-    supportsChain &&
-    ZCASH_WALLETCONNECT_REQUIRED_METHODS.every((method) =>
-      namespace.methods.includes(method),
-    )
-  );
+  if (
+    !namespace ||
+    !Array.isArray(namespace.methods) ||
+    !namespace.methods.every((method) => typeof method === 'string') ||
+    !ZCASH_WALLETCONNECT_METHODS.every((method) => namespace.methods.includes(method)) ||
+    !Array.isArray(namespace.events) ||
+    !namespace.events.every((event) => typeof event === 'string') ||
+    !ZCASH_WALLETCONNECT_EVENTS.every((event) => namespace.events.includes(event))
+  ) {
+    throw new WalletProviderError('WalletConnect session must authorize all four Zcash methods and both events');
+  }
+  if (
+    !Array.isArray(namespace.chains) ||
+    !namespace.chains.every((chain) => typeof chain === 'string') ||
+    namespace.chains.length !== 1 ||
+    namespace.chains[0] !== ZCASH_WALLETCONNECT_CHAIN_ID
+  ) {
+    throw new WalletProviderError('WalletConnect session does not authorize Zcash mainnet');
+  }
+  if (!Array.isArray(namespace.accounts) || namespace.accounts.length === 0) {
+    throw new WalletProviderError('WalletConnect session did not include a Zcash mainnet account');
+  }
+  // Also reject malformed, mixed-network, oversized, or ambiguous account lists
+  // before either a new or a restored session can become connected.
+  connectionFromSession(session);
 }
 
 function connectionFromSession(session: WalletConnectSession): ZcashConnection {
-  const accounts =
-    session.namespaces.bip122?.accounts.filter((candidate) =>
-      candidate.startsWith(`${ZCASH_WALLETCONNECT_CHAIN_ID}:`),
-    ) ?? [];
-  if (accounts.length === 0) {
-    throw new WalletProviderError(
-      'WalletConnect session did not include a Zcash mainnet account',
-    );
-  }
+  return connectionFromAccounts(session.namespaces.bip122!.accounts, session);
+}
 
+function connectionFromAccounts(accounts: string[], session: WalletConnectSession): ZcashConnection {
   let transparent = '';
   let shielded = '';
   for (const account of accounts) {
-    const address = account.slice(ZCASH_WALLETCONNECT_CHAIN_ID.length + 1);
-    if (!address) continue;
-    if (isTransparentAddress(address)) transparent = address;
-    else shielded = address;
+    const address = addressFromAccount(account);
+    if (addressType(address) === 'transparent') {
+      if (transparent && transparent !== address) {
+        throw new WalletProviderError('WalletConnect supports only one distinct transparent address per session');
+      }
+      transparent = address;
+    } else {
+      if (shielded && shielded !== address) {
+        throw new WalletProviderError('WalletConnect supports only one distinct shielded address per session');
+      }
+      shielded = address;
+    }
   }
 
   if (!transparent && !shielded) {
@@ -548,56 +604,56 @@ function connectionFromEventData(
   data: unknown,
   session: WalletConnectSession,
 ): ZcashConnection {
-  if (typeof data === 'string') {
-    const address = data.startsWith(`${ZCASH_WALLETCONNECT_CHAIN_ID}:`)
-      ? data.slice(ZCASH_WALLETCONNECT_CHAIN_ID.length + 1)
-      : data;
-    return connectionFromAddress(address, data, session.peer?.publicKey ?? '', 'WalletConnect account');
-  }
-  if (Array.isArray(data) && typeof data[0] === 'string') {
-    return connectionFromEventData(data[0], session);
-  }
-  if (isObject(data) && typeof data.address === 'string') {
-    return connectionFromEventData(data.account ?? data.address, session);
-  }
-  throw new WalletProviderError('WalletConnect returned invalid account data');
+  const values = Array.isArray(data) ? data : [data];
+  const accounts = values.map((value) => {
+    let account: string;
+    if (typeof value === 'string') {
+      if (value.includes(':')) {
+        addressFromAccount(value);
+        account = value;
+      } else {
+        addressType(value);
+        account = `${ZCASH_WALLETCONNECT_CHAIN_ID}:${value}`;
+      }
+    } else if (isObject(value) && typeof value.address === 'string') {
+      addressType(value.address);
+      account = `${ZCASH_WALLETCONNECT_CHAIN_ID}:${value.address}`;
+      if (value.account !== undefined && value.account !== account) {
+        throw new WalletProviderError('WalletConnect account event has inconsistent address and account fields');
+      }
+    } else {
+      throw new WalletProviderError('WalletConnect returned invalid account data');
+    }
+    if (!session.namespaces.bip122?.accounts.includes(account)) {
+      throw new WalletProviderError('WalletConnect account event contains an unauthorized address; reconnect to change accounts');
+    }
+    return account;
+  });
+  return connectionFromAccounts(accounts, session);
 }
 
-function chainIdFromEventData(data: unknown): string | null {
-  if (typeof data === 'string') return data;
-  if (isObject(data)) {
-    if (typeof data.chainId === 'string') return data.chainId;
-    if (typeof data.network === 'string') return data.network;
+function addressFromAccount(account: unknown): string {
+  const prefix = `${ZCASH_WALLETCONNECT_CHAIN_ID}:`;
+  if (typeof account !== 'string' || !account.startsWith(prefix)) {
+    throw new WalletProviderError('WalletConnect account must use the Zcash mainnet CAIP-2 prefix');
   }
-  return null;
+  const address = account.slice(prefix.length);
+  addressType(address);
+  return address;
 }
 
-function connectionFromAddress(
-  address: string,
-  account: string,
-  walletId: string,
-  label: string,
-): ZcashConnection {
-  if (!address) throw new WalletProviderError('WalletConnect returned an empty Zcash address');
-  const transparent = isTransparentAddress(address) ? address : '';
-  const shielded = transparent ? '' : address;
-  return {
-    transparent,
-    shielded,
-    accounts: [
-      {
-        id: account,
-        label,
-        walletId,
-        accountId: account,
-        addresses: { transparent, shielded },
-      },
-    ],
-  };
-}
-
-function isTransparentAddress(address: string): boolean {
-  return /^(?:t1|t3|tm|t2)/.test(address);
+/** Structural validation only. The wallet must decode checksums and UA receivers. */
+function addressType(address: unknown): 'transparent' | 'shielded' {
+  if (
+    typeof address !== 'string' ||
+    address.length > ZCASH_WALLETCONNECT_ACCOUNT_ADDRESS_MAX_LENGTH ||
+    !/^[-.%a-zA-Z0-9]+$/.test(address)
+  ) {
+    throw new WalletProviderError('WalletConnect account address must contain 1–128 CAIP-10 characters; long Unified Addresses are not supported in session accounts');
+  }
+  if (/^(?:t1|t3).+/.test(address)) return 'transparent';
+  if (/^(?:zs1|u1).+/.test(address)) return 'shielded';
+  throw new WalletProviderError('WalletConnect account address must use a supported mainnet t1, t3, zs1, or u1 format');
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -1,15 +1,21 @@
 # WalletConnect in React
 
+Contract revision: **2026-11-10**. Implementation baseline: **0.2.5 source (unreleased)**. The [session contract](mobile-wallet-walletconnect.en.md#3-session-protocol-and-compatibility) defines the shared version, permissions, and address limits for this guide.
+
 Use the UI-ready `WalletProvider` for a wallet selector and pairing QR code. Use the `/react` provider only when the application supplies its own pairing UI. This adapter is the DApp side of a WalletConnect v2 connection; the wallet must support the Zcash `bip122` methods below.
 
 ## Requirements
 
 - A Reown/WalletConnect project ID and a client-side React application. In Next.js, put the provider and wallet actions in client components (`'use client'`).
-- A compatible Zcash mainnet wallet that approves WalletConnect sessions and implements all four requested methods. An Ethereum-only wallet cannot approve this namespace. For the Noir browser extension's pairing path, confirm the installed version supports `NOIR_WC_PAIR`.
+- A compatible Zcash mainnet wallet that approves WalletConnect sessions, implements all four requested methods and both events, and authorizes supported addresses within the CAIP-10 limit. An Ethereum-only wallet cannot approve this namespace. For the Noir browser extension's pairing path, confirm the installed version supports `NOIR_WC_PAIR`.
+
+Install the adapter in the DApp project:
 
 ```bash
-pnpm add @rhea-finance/zcash-wallet-adapter
+pnpm add @rhea-finance/zcash-wallet-adapter@0.2.5
 ```
+
+Version 0.2.5 must be published before this installation command can be used.
 
 ## Built-in selector and QR code
 
@@ -152,6 +158,14 @@ For a custom mobile-wallet flow, replace the `onDisplayUri` callback with a QR r
 
 ## Protocol and limits
 
-The current session proposal requires Zcash Mainnet (`bip122:00040fe8ec8471911baa1db1266ea15d`), methods `zcash_getAddress`, `zcash_getBalance`, `zcash_transfer`, `zcash_signMessage`, and events `accountsChanged`, `chainChanged`. Wallets must approve all requested permissions. An older restored session may lack message signing; reconnect to request it.
+New and restored sessions both require Zcash Mainnet (`bip122:00040fe8ec8471911baa1db1266ea15d`), methods `zcash_getAddress`, `zcash_getBalance`, `zcash_transfer`, `zcash_signMessage`, and events `accountsChanged`, `chainChanged`. A restored session missing any required permission is incompatible; reauthorize interactively rather than treating it as connected. Silent restoration does not open a new pairing QR.
 
-Amounts are decimal ZEC strings with at most eight decimal places. Transfers default to **shielded** funding when `fundingSource` is omitted; set `'transparent'` explicitly if intended. The wallet confirms and broadcasts a transfer before returning a transaction ID. PCZT signing is not supported over WalletConnect. For wallet-side implementation, see the [mobile wallet integration guide](../docs/mobile-wallet-walletconnect.en.md); for test cases, see the [acceptance specification](../docs/walletconnect-acceptance.en.md).
+Session accounts keep the existing `<mainnet chain ID>:<address>` format. The address segment must match `[-.%a-zA-Z0-9]{1,128}` and start with `t1`, `t3`, `zs1`, or `u1`. Only one logical account, with at most one distinct address per category, is represented. `getAddress()` still sends `{}` and returns `{ address, account?, type? }`; its address must be in the current selected set, initially the session accounts. An `accountsChanged` event replaces that set, and a single address clears the other category. The adapter checks syntax and prefixes, while the wallet must decode addresses, verify checksums/mainnet, and confirm UA receiver support.
+
+A complete UA longer than 128 characters cannot be used in session accounts or returned by `getAddress()` under this contract. No short-ID substitution or automatic transparent-address disclosure is defined. This is a constraint of the existing account model, not a limit on `zcash_transfer.params.to`: a longer valid mainnet UA may still be a transfer recipient if supported by the wallet.
+
+These Zcash RPC conventions belong to this adapter; they are not an official WalletConnect Zcash RPC standard. The revision constant is documentation metadata. No handshake, RPC version field, new method, or replacement address response is introduced. Pin the adapter version, commit, and contract revision with the integrating wallet team.
+
+Amounts are decimal ZEC strings with at most eight decimal places. Transfers default to **shielded** funding when `fundingSource` is omitted; set `'transparent'` explicitly if intended. The wallet confirms and broadcasts a transfer before returning a transaction ID. PCZT signing is not supported over WalletConnect. For wallet-side implementation, see the [mobile wallet integration guide](mobile-wallet-walletconnect.en.md); for test cases, see the [acceptance specification](walletconnect-acceptance.en.md).
+
+The approved `chains` array must explicitly contain only the mainnet chain ID. `getBalance()` requires all five decimal-string fields (`transparent`, `shielded`, `total`, `spendable`, `available`); missing or malformed fields fail instead of becoming zero. `chainChanged` data must be the exact mainnet CAIP-2 string, never an object. Method errors follow the required [error contract](mobile-wallet-walletconnect.en.md#error-responses).

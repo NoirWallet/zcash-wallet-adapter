@@ -1,8 +1,10 @@
 # Zcash Mobile Wallet Integration with WalletConnect
 
+Contract revision: **2026-11-10**. Implementation baseline: **0.2.5 source (unreleased)**. Pin the adapter release and source commit when starting an integration; do not assume the published `latest` package contains this revision.
+
 This guide is for mobile wallet teams, such as Zodl, that already provide Zcash accounts, balance synchronization, and transactions. It explains how to act as a **WalletConnect v2 wallet responder** for DApps using `@rhea-finance/zcash-wallet-adapter`.
 
-Mentioning Zodl does not imply an existing integration or commitment. The Zcash RPC methods below are interoperability conventions used by this adapter; they are not supported by every WalletConnect wallet or DApp. The current scope is **Zcash Mainnet**.
+Mentioning Zodl does not imply an existing integration or commitment. The Zcash RPC methods below are application conventions maintained by this adapter, not an official WalletConnect Zcash RPC standard. They are not supported by every WalletConnect wallet or DApp. The current scope is **Zcash Mainnet**.
 
 ## 1. What the Wallet Team Needs to Build
 
@@ -40,6 +42,8 @@ Use a validated return link or let the user switch back to the browser manually.
 
 ## 3. Session Protocol and Compatibility
 
+This section defines the version, permission, and address constraints for this revision. The DApp guide and acceptance specification refer to this contract. The four RPC method names and their existing request/response shapes remain unchanged. There is no protocol-version handshake or version field on the wire: the exported `ZCASH_WALLETCONNECT_PROTOCOL_REVISION` is documentation metadata, not negotiated wallet capability. Record the adapter package version, source commit, this contract revision, and wallet build together. SDK version numbers alone do not establish compatibility.
+
 ### Chain and Accounts
 
 | Field | Value |
@@ -47,7 +51,10 @@ Use a validated return link or let the user switch back to the browser manually.
 | Namespace | `bip122` |
 | CAIP-2 chain ID | `bip122:00040fe8ec8471911baa1db1266ea15d` |
 | Adapter's internal chain name | `zcash:mainnet` (not a replacement for the session's CAIP-2 ID) |
-| CAIP-10 account | `<CAIP-2 chain ID>:<Zcash address>` |
+| CAIP-10 account | `<CAIP-2 chain ID>:<authorized mainnet address>` |
+| Address segment syntax | `[-.%a-zA-Z0-9]{1,128}`; the 128-character limit excludes the chain ID and separator |
+| Supported session-address prefixes | `t1` / `t3` (transparent), `zs1` (Sapling), `u1` (Unified Address with a wallet-validated shielded receiver) |
+| Account grouping | One logical account; at most one distinct transparent and one distinct shielded address. Identical duplicate entries are tolerated |
 
 The current adapter sends this `requiredNamespaces` proposal for new sessions:
 
@@ -66,14 +73,15 @@ The current adapter sends this `requiredNamespaces` proposal for new sessions:
 }
 ```
 
-**New sessions must support all four methods and both events above.** A required namespace cannot be approved by silently removing unsupported methods. Reject an incompatible proposal. Negotiating fewer capabilities requires changing the DApp's proposal configuration first.
+**New and restored sessions must support all four methods and both events above.** A required namespace cannot be approved by silently removing unsupported methods or events. Reject an incompatible proposal. The adapter does not provide a reduced-permission legacy mode in this revision.
 
-The adapter's compatibility check for existing sessions requires only the first three methods. Some older sessions can therefore be restored without `zcash_signMessage`, but signing will fail. This restoration behavior is not the minimum requirement for a new integration.
+An older session missing any required permission or containing unsupported account data is not eligible for restoration. Silent connection must fail without showing a new pairing QR when no compatible session exists; an interactive connection may request a new authorization. A compatible session is subject to the same address constraints whether newly approved or restored.
 
-The approved `namespaces.bip122` must contain the actual authorized accounts:
+The approved `namespaces.bip122` MUST explicitly contain `chains: ["bip122:00040fe8ec8471911baa1db1266ea15d"]` and the actual authorized accounts. Missing, empty, or additional chains are rejected for both approval and restoration. This is a requirement of this adapter profile:
 
 ```ts
-// Replace placeholders with real mainnet addresses for one logical account.
+// Replace placeholders with actual authorized mainnet addresses, each <=128
+// characters, for one logical account. Placeholders are not valid addresses.
 const approvedNamespace = {
   chains: ['bip122:00040fe8ec8471911baa1db1266ea15d'],
   methods: [
@@ -82,13 +90,19 @@ const approvedNamespace = {
   ],
   events: ['accountsChanged', 'chainChanged'],
   accounts: [
-    'bip122:00040fe8ec8471911baa1db1266ea15d:<shielded-address>',
+    'bip122:00040fe8ec8471911baa1db1266ea15d:<supported-shielded-address>',
     'bip122:00040fe8ec8471911baa1db1266ea15d:<transparent-address>',
   ],
 };
 ```
 
-Return both shielded and transparent addresses where available so the corresponding DApp fields can be populated. The current adapter maps these addresses to one logical account; do not mix multiple independent wallet accounts. Validate the network and actual receiver support in the wallet. A Unified Address prefix alone does not guarantee a particular receiver type.
+Authorize both supported shielded and transparent addresses when available and permitted by the user so the corresponding DApp fields can be populated. Do not mix independent wallet accounts, or return two different addresses of the same category. All session accounts must use the exact mainnet chain ID above; testnet, empty, unknown-prefix, and overlength addresses are unsupported.
+
+The adapter checks the chain, address character set, length, and supported prefixes. These are syntax checks, **not full address decoding, checksum verification, ownership proof, or validation of UA receivers**. The wallet MUST decode each address, verify its checksum and mainnet network, and confirm that a UA used as `shielded` has a supported shielded receiver. A `u1` prefix alone is not evidence of this capability. Sprout, TEX, and testnet addresses are outside this revision's session/get-address support.
+
+**A complete UA longer than 128 characters is not supported in session accounts by this contract.** Do not truncate it, substitute a hash or invented ID, or silently expose a transparent address to bypass the restriction. If the wallet cannot obtain the user's authorization for an actual supported address, this session/address model cannot represent that wallet account. Supporting it requires a separately specified future protocol change; this guide does not introduce an alternative identity or address RPC.
+
+The limit comes from the account-address segment in [CAIP-10](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-10.md), not the [Zcash Unified Address encoding](https://zips.z.cash/zip-0316). It also applies to the authorized address returned by `zcash_getAddress`. **It does not apply to `zcash_transfer.params.to`**: a transfer recipient is a payment address, not a CAIP-10 account. A wallet may accept a longer mainnet UA recipient after validating the full address and receiver support.
 
 ## 4. Mobile Wallet Implementation
 
@@ -129,7 +143,8 @@ const walletKit = await WalletKit.init({
 // Register handlers once at app startup, before accepting a QR or deep link.
 walletKit.on('session_proposal', async ({ id, params }) => {
   const requested = params.requiredNamespaces.bip122;
-  const supported = requested?.chains?.includes(CHAIN) &&
+  const supported = Object.keys(params.requiredNamespaces).length === 1 &&
+    requested?.chains?.length === 1 && requested.chains[0] === CHAIN &&
     requested.methods.every((method) => METHODS.includes(method)) &&
     requested.events.every((event) => EVENTS.includes(event));
   if (!supported) {
@@ -147,9 +162,19 @@ walletKit.on('session_proposal', async ({ id, params }) => {
     });
     return;
   }
-  // Both addresses must belong to the same authorized logical account.
+  // The wallet engine must first decode/checksum-check these addresses,
+  // verify mainnet and receiver support, and obtain user authorization.
+  // Both addresses must belong to the same logical account.
   const addresses = [account.shieldedAddress, account.transparentAddress]
     .filter((address): address is string => Boolean(address));
+  if (addresses.length === 0 || addresses.some((address) =>
+    address.length > 128 ||
+    !/^(?:t1|t3|zs1|u1)[-.%a-zA-Z0-9]+$/.test(address))) {
+    await walletKit.rejectSession({
+      id, reason: { code: 5103, message: 'Unsupported session address format' },
+    });
+    return;
+  }
   await walletKit.approveSession({
     id,
     namespaces: {
@@ -170,28 +195,30 @@ export async function openPairingUri(uri: string) {
 }
 ```
 
-Persist the authorized account *per session topic* after approval and restore it on app startup. Do not use whichever account is currently selected in the wallet for an old DApp session. Register request listeners before calling `pair`, including when a deep link launches the app from a cold start. WalletKit owns relay transport and session persistence; the wallet owns account authorization and signing.
+Persist the authorized account and its current address selection *per session topic* after approval and restore both on app startup. In the handler below, `account.shieldedAddress` and `account.transparentAddress` are the current selection, constrained by the immutable session authorization set; update these when emitting `accountsChanged`. Do not use whichever account is currently selected in the wallet for an old DApp session. Register request listeners before calling `pair`, including when a deep link launches the app from a cold start. WalletKit owns relay transport and session persistence; the wallet owns account authorization and signing.
 
-Dispatch each request to your existing wallet engine. The request's `topic` and `id` identify the response, and `params.chainId` must match the approved chain. The example below is a handler outline: `authorizedAccountForSession` must read the actual approved WalletKit session and your persisted account mapping; `readBalance`, `confirmAndBroadcast`, and `confirmAndSign` must be implemented by the mobile wallet.
+Dispatch each request to your existing wallet engine. The request's `topic` and `id` identify the response, and `params.chainId` must match the approved chain. The example below is a handler outline: `authorizedAccountForSession` must read the actual approved WalletKit session and your persisted account mapping; `readBalance`, `confirmAndBroadcast`, and `confirmAndSign` must be implemented by the mobile wallet. These engine wrappers must map native failures to the required method-error codes in Section 5; the handler preserves those codes and falls back to `-32603` for an unclassified internal exception.
 
 ```ts
 walletKit.on('session_request', async ({ topic, id, params }) => {
   try {
     const account = await authorizedAccountForSession(topic);
     if (!account || params.chainId !== CHAIN) {
-      throw new Error('Unauthorized session or network');
+      throw Object.assign(new Error('Unauthorized session or network'), { code: 4100 });
     }
     const { method, params: input } = params.request;
     if (!METHODS.includes(method) || !account.allowedMethods.includes(method)) {
-      throw new Error('Method not authorized for this session');
+      throw Object.assign(new Error('Method not authorized for this session'), { code: 4200 });
     }
 
     let result: unknown;
     switch (method) {
       case 'zcash_getAddress':
+        // Return an address from this topic's persisted current selection;
+        // do not substitute a newly selected or unsupported long UA.
         result = {
-          account: `${CHAIN}:${account.shieldedAddress ?? account.transparentAddress}`,
-          address: account.shieldedAddress ?? account.transparentAddress,
+          account: `${CHAIN}:${account.shieldedAddress || account.transparentAddress}`,
+          address: account.shieldedAddress || account.transparentAddress,
           type: account.shieldedAddress ? 'shielded' : 'transparent',
         };
         break;
@@ -213,18 +240,23 @@ walletKit.on('session_request', async ({ topic, id, params }) => {
       topic, response: { id, jsonrpc: '2.0', result },
     });
   } catch (error) {
+    const failure = error as { code?: unknown; message?: unknown } | null;
     await walletKit.respondSessionRequest({
       topic,
       response: {
         id, jsonrpc: '2.0',
-        error: { code: 5000, message: error instanceof Error ? error.message : 'Request failed' },
+        error: {
+          code: typeof failure?.code === 'number' && Number.isInteger(failure.code)
+            ? failure.code : -32603,
+          message: typeof failure?.message === 'string' ? failure.message : 'Request failed',
+        },
       },
     });
   }
 });
 ```
 
-These wallet functions are intentionally not part of this repository. They must validate the request fields and obtain user approval; returning `txid` without a real broadcast or returning a dummy signature will not pass the acceptance tests. Store `topic:id -> txid` across process restarts so a redelivered request cannot broadcast twice. Use the SDK's standard rejection/error helpers where available, and distinguish user rejection, invalid parameters, and unsupported methods in production. On `session_delete` or expiry, remove the topic's account mapping and pending approvals; provide a connected-DApps screen to call `disconnectSession` when the user revokes access.
+These wallet functions are intentionally not part of this repository. They must validate the request fields and obtain user approval; returning `txid` without a real broadcast or returning a dummy signature will not pass the acceptance tests. Store `topic:id -> txid` across process restarts so a redelivered request cannot broadcast twice. Use the SDK's standard rejection/error helpers where available, and distinguish user rejection (`5000`), invalid parameters (`-32602`), and unsupported methods (`4200`). Do not turn technical failures into user rejection; the outline preserves an existing numeric error code and uses `-32603` for an unclassified internal failure. On `session_delete` or expiry, remove the topic's account mapping and pending approvals; provide a connected-DApps screen to call `disconnectSession` when the user revokes access.
 
 ### Native iOS and Android
 
@@ -260,7 +292,7 @@ Amounts are **decimal strings in ZEC with at most eight decimal places**. Use in
 
 ### `zcash_getAddress`
 
-The current adapter sends `{}`. Return the authorized account's default address, preferably shielded. Wallets may additionally accept `type: 'shielded' | 'transparent'`, but the adapter's current `getAddress()` does not send that option.
+The adapter sends `{}`. Return one of this session's currently selected addresses, preferably shielded. Initially the current address set is the approved session account set; a valid `accountsChanged` event replaces the current set without expanding the session authorization set. `address` is required; `account` and `type` are optional. If supplied, `account` MUST equal `<mainnet CAIP-2 ID>:<address>` and belong to the approved session. If supplied, `type` MUST be `transparent` for `t1`/`t3`, or `shielded` for a wallet-validated `zs1`/`u1` address. The same character, prefix, and 128-character address limit in Section 3 applies. Wallets may additionally accept `type: 'shielded' | 'transparent'` in requests, but the adapter's `getAddress()` does not send that option.
 
 ```json
 {
@@ -270,11 +302,11 @@ The current adapter sends `{}`. Return the authorized account's default address,
 }
 ```
 
-Initial connection addresses come primarily from session accounts. This RPC does not replace correctly populated accounts in the approved session.
+Connection addresses come from session accounts. This RPC does not replace correctly populated accounts, initialize a second address pair, authorize a new address, or provide a long-UA workaround. Returning an address outside the current set is rejected even if it remains in the session authorization set. Any accepted account-selection event invalidates an in-flight address response; retry against the new state. `getAddress()` itself never changes the current set. On restoration the adapter initializes its local selection from session accounts; the wallet must emit its persisted selection again if narrower. No selection is inferred from a `getAddress()` response.
 
 ### `zcash_getBalance`
 
-Request parameters: `{}`. Return all of these fields where possible, using strings:
+Request parameters: `{}`. All five fields below are REQUIRED, using non-negative decimal ZEC strings with at most eight decimal places (no signs, exponent notation, whitespace, or leading zeroes except `0`):
 
 ```json
 {
@@ -286,7 +318,7 @@ Request parameters: `{}`. Return all of these fields where possible, using strin
 }
 ```
 
-These represent transparent, shielded, total, spendable, and available balances. Calculate them from the wallet's actual synchronization and locking state; never label unspendable funds as available just to fill a field. The adapter tolerates missing fields but does not recalculate the total. Returning only the legacy `confirmed` field is discouraged.
+These represent transparent, shielded, total, spendable, and available balances. Calculate them from the wallet's actual synchronization and locking state; never label unspendable funds as available just to fill a field. The adapter rejects missing or malformed fields; it neither substitutes zero nor derives missing values from other fields. The legacy `confirmed` field is not a replacement for any required field. `"0"` means a known zero balance, never unknown or unavailable data. If the wallet cannot determine a required balance, it MUST return an error. The adapter validates balance sums and bounds in integer zatoshi. The wallet MUST calculate `total = transparent + shielded` in integer zatoshi; `available` and `spendable` describe its actual spendability constraints and MUST NOT exceed total.
 
 ### `zcash_transfer`
 
@@ -354,23 +386,28 @@ A `derived` address may still be linked through `originAddress` or application i
 
 ### Error Responses
 
-| Scenario | Recommended handling |
-| --- | --- |
-| User rejects an authorized method request | JSON-RPC error, for example `5000`, with a clear message |
-| Unsupported method | `4200`; do not advertise an unimplemented method during proposal approval |
-| Invalid parameters | `-32602`, identifying the invalid field |
-| Insufficient funds, network, proof, or broadcast failure | Structured error with a meaningful reason; no fabricated txid |
-| Unsupported required chain, method, or event | Reject the proposal using the SDK's appropriate standard reason |
+For method requests, wallets MUST return a JSON-RPC 2.0 error with an integer `code` and non-empty `message`, using this contract:
 
-These application error codes are integration recommendations. Use the selected SDK's standard error types for session and lifecycle failures. Always respond to rejected or failed requests rather than leaving the DApp waiting indefinitely.
+| Scenario | Required code | DApp adapter result |
+| --- | --- | --- |
+| User rejects an authorized method request | `5000` | `UserRejectedError` (`USER_REJECTED`); original error in `cause` |
+| Session/account is not authorized or request chain is outside session authorization | `4100` | `WalletProviderError`, `providerCode: 4100` |
+| Method unsupported or not authorized | `4200` | `WalletMethodNotSupportedError` (`UNSUPPORTED_METHOD`) |
+| Invalid parameters, including unsupported parameter values or conflicting fields | `-32602` | `WalletInvalidInputError` (`INVALID_INPUT`); original error in `cause` |
+| Insufficient funds, proof generation failure, or broadcast failure | `-32000` | `WalletProviderError`, `providerCode: -32000`; message identifies the failure |
+| Unclassified internal wallet failure | `-32603` | `WalletProviderError`, `providerCode: -32603` |
+
+These are required application conventions for this revision, not recommendations. A wallet MUST NOT report technical failures as user rejection, fabricate a successful result, or leave a request unanswered. Request errors do not by themselves disconnect an otherwise valid session. Unknown codes remain `WalletProviderError` with the numeric `providerCode`; this preserves diagnostics and does not make a nonconforming wallet compliant. The adapter also recognizes legacy `4001` as rejection and `-32601` as unsupported method, but wallets implementing this revision MUST use the codes above.
+
+Proposal rejection and session lifecycle errors use the selected WalletConnect SDK's standard reasons; they are separate from this method-request error table. Reject proposals with unsupported required chains, methods, or events.
 
 ## 6. Events, Account Switching, and Network Limits
 
 Emit `accountsChanged` and `chainChanged` under the authorized session's mainnet chain ID. When the user revokes a connection, use the SDK's session-disconnect API; the DApp clears its state on session deletion.
 
-The current adapter accepts a single address, CAIP-10 string, or `{ address, account? }` for `accountsChanged`. For arrays it uses only the first item. **This event currently cannot reliably refresh both shielded and transparent addresses together**, and the adapter does not have a general session-update listener to rebuild the complete account. For account switching, disconnect and obtain a new authorization so session accounts provide the complete address pair.
+For `accountsChanged`, use a supported approved address, its CAIP-10 string, an array of approved address strings/CAIP-10 strings, or `{ address, account? }`. The event envelope's `chainId` MUST be the exact mainnet CAIP-2 ID. Addresses remain subject to Section 3 and MUST already be authorized in this session; an event is not permission to introduce another account. An array replaces the current selected address pair atomically; `null` or an empty array disconnects. A single-address payload replaces the current set with only that address and clears the other category. `getAddress()` MUST return an address in this current set; it MUST NOT return a deselected address merely because it remains session-authorized. A later approved-address event may select it again. Wallets MUST persist this current selection per topic and update it before emitting the event; balance, transfer, and signing requests remain scoped to the same authorized logical account. The adapter does not implement general `session_update` handling. For a switch to another logical account or a newly authorized address, disconnect and obtain new authorization.
 
-For `chainChanged`, return the mainnet CAIP-2 ID. The current adapter does not support Zcash Testnet. It reports unsupported network changes, but wallets must not assume this automatically blocks every later DApp operation. Reject requests for a mismatched network or disconnect the mainnet session.
+For `chainChanged`, both the event envelope's `chainId` and its data MUST each be a string equal to the exact mainnet CAIP-2 ID, not `mainnet` or the adapter's internal `zcash:mainnet` alias. Object payloads such as `{ chainId }` or `{ network }` are invalid and are not unwrapped. An event with a missing or different envelope chain ID is rejected without changing account/connection state. In a correctly scoped mainnet event, an unsupported `chainChanged` data value disconnects the adapter and blocks subsequent requests until reconnection. The wallet must independently reject requests outside its authorized mainnet session.
 
 ## 7. Displaying a QR Code in the DApp
 
@@ -407,6 +444,8 @@ The adapter currently displays `Noir Wallet (WalletConnect)`, but transport comp
 
 ## 8. Integration and Acceptance Checklist
 
+This revision defines adapter-side protocol constraints; it is not a report of a completed Zodl integration. Native Swift/Kotlin sample applications and real-wallet end-to-end runs are separate follow-up deliverables. The wallet team owns its platform SDK and wallet implementation. Adapter contract tests can establish the behavior described in Section 3; they do not prove actual mobile authorization, signature verification, or on-chain delivery.
+
 Agree on the test DApp URL, wallet installation link and version, device and OS, mainnet test amount, and recipient address before testing. A generic Ethereum WalletConnect test page does not replace Zcash RPC integration testing. Mainnet tests require a small amount of real ZEC plus fees.
 
 | Test | Pass criteria |
@@ -435,4 +474,4 @@ Follow the official WalletConnect documentation for wallet initialization, pairi
 - [iOS WalletKit installation](https://docs.walletconnect.com/wallets/ios/installation)
 - [Session namespace specification](https://github.com/WalletConnect/walletconnect-specs/blob/main/docs/specs/clients/sign/namespaces.md)
 
-This guide describes the [WalletConnect adapter](../src/wallets/walletconnect/WalletConnectZcashWalletAdapter.ts) and its [tests](../src/wallets/walletconnect/WalletConnectZcashWalletAdapter.test.ts) as of this document's commit. It also draws on the all-sdk-demo Zcash wallet integration specification and message-signing implementation. Pin the adapter version or commit for partner integration. Agree explicitly on versions of custom RPC and signature formats; SDK upgrades alone do not guarantee compatibility.
+This guide describes the [WalletConnect adapter](../src/wallets/walletconnect/WalletConnectZcashWalletAdapter.ts) and its [tests](../src/wallets/walletconnect/WalletConnectZcashWalletAdapter.test.ts) at the implementation baseline and contract revision above. It also draws on the all-sdk-demo Zcash wallet integration specification and message-signing implementation. Pin the adapter version and source commit for partner integration. Agree explicitly on custom RPC and signature formats; SDK upgrades alone do not guarantee compatibility. For this revision, do not add a version field to RPC parameters or change their response shape.

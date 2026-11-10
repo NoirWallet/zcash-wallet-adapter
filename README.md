@@ -87,16 +87,49 @@ await store.autoConnect();
 
 ## WalletConnect
 
-For React DApps, start with the [WalletConnect React integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/downloads/WalletConnect-Guide.md) for the built-in QR selector or a headless UI. Mobile wallet teams (such as Zodl) can use the [mobile wallet integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/mobile-wallet-walletconnect.en.md) for the wallet-side protocol. Use the [WalletConnect acceptance specification](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/walletconnect-acceptance.en.md) to test an integration with a compatible wallet.
+For React DApps, start with the [WalletConnect React integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/walletconnect-react.en.md) for the built-in QR selector or a headless UI. Mobile wallet teams (such as Zodl) can use the [mobile wallet integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/mobile-wallet-walletconnect.en.md) for the wallet-side protocol. Use the [WalletConnect acceptance specification](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/walletconnect-acceptance.en.md) to test an integration with a compatible wallet.
 
-The WalletConnect adapter follows the `bip122` Zcash namespace used by the
-Noir WalletConnect demo. It requests the Zcash mainnet chain
+The WalletConnect integration uses adapter-maintained Zcash RPC conventions,
+not an official WalletConnect Zcash RPC standard. The
+[session contract](docs/mobile-wallet-walletconnect.en.md#3-session-protocol-and-compatibility)
+is revision **2026-11-10**, with implementation baseline **0.2.5 source
+(unreleased)**. Pin the adapter version and source commit with the wallet team;
+the revision constant is documentation metadata, with no version negotiation or
+new RPC parameters. Version 0.2.5 must be published before registry installation
+and integration acceptance against that release.
+
+It requests the Zcash mainnet chain
 `bip122:00040fe8ec8471911baa1db1266ea15d` and these methods:
 
 - `zcash_getAddress`
 - `zcash_getBalance`
 - `zcash_transfer`
 - `zcash_signMessage`
+
+Approved sessions must explicitly declare only the mainnet chain in `chains`.
+Balances require all five decimal-string fields; missing values are rejected.
+`getAddress()` follows the current address selection after account events.
+Method failures follow the required [error contract](docs/mobile-wallet-walletconnect.en.md#error-responses).
+
+Both new and restored sessions require all four methods and the events
+`accountsChanged` and `chainChanged`. Incomplete older sessions must be
+reauthorized. Session accounts retain the existing `<chain ID>:<address>` format
+and support only mainnet `t1`/`t3`, `zs1`, or wallet-validated shielded `u1`
+addresses with a CAIP-10 address segment of 1–128 permitted characters. At most
+one distinct address per category is represented for one logical account.
+The adapter checks syntax and prefixes; the wallet verifies checksums, network,
+ownership, and actual UA receivers.
+
+Complete UAs longer than 128 characters are not supported as session accounts or
+`getAddress()` results in this revision. The existing `getAddress()` request `{}`
+and response `{ address, account?, type? }` are unchanged; the result must identify
+an address in the current selected set, not merely a session-authorized address.
+This limit does not apply to transfer recipients:
+`zcash_transfer.params.to` may be a longer valid mainnet UA supported by the wallet.
+No alternative session identity or forced transparent-address disclosure is
+defined. Native mobile implementations and real-wallet end-to-end acceptance
+remain separate integration work; this revision does not assert a completed Zodl
+integration.
 
 Import it from the dedicated entry point so applications that only use the
 injected Noir provider do not load WalletConnect:
