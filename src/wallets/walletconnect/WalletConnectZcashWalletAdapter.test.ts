@@ -6,6 +6,7 @@ import {
   WalletProviderError,
 } from '../../core/index.js';
 import { describe, expect, it, vi } from 'vitest';
+import unifiedAddresses from './__fixtures__/unified-addresses.json';
 
 import {
   WalletConnectZcashWalletAdapter,
@@ -17,8 +18,8 @@ import {
   type WalletConnectSignClient,
 } from './WalletConnectZcashWalletAdapter.js';
 
-// These fixtures exercise the protocol's syntax checks, not Zcash checksum or
-// receiver decoding. Wallets must validate real addresses with their Zcash SDK.
+// The inline fixtures below are synthetic syntax examples. The separately pinned
+// upstream fixtures contain real UAs; neither set proves wallet-side decoding.
 const transparentAddress = 't1WalletConnectAddress';
 const account = `${ZCASH_WALLETCONNECT_CHAIN_ID}:${transparentAddress}`;
 
@@ -138,6 +139,71 @@ class MockSignClient implements WalletConnectSignClient {
 }
 
 describe('WalletConnectZcashWalletAdapter', () => {
+  it.each(unifiedAddresses.filter(({ length }) => length <= 128))(
+    'accepts the real $name UA ($length characters) on approval, getAddress, and restoration',
+    async ({ address, length }) => {
+      expect(address).toHaveLength(length);
+      const session = withAccounts([`${ZCASH_WALLETCONNECT_CHAIN_ID}:${address}`]);
+      const client = new MockSignClient();
+      client.approvedSession = session;
+      client.addressResponse = { address, type: 'shielded' };
+      const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
+      await expect(adapter.connect()).resolves.toMatchObject({ shielded: address });
+      await expect(adapter.getAddress()).resolves.toEqual({ address, type: 'shielded' });
+
+      const restoringClient = new MockSignClient();
+      restoringClient.sessions = [session];
+      const restored = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client: restoringClient });
+      await expect(restored.connect({ silent: true })).resolves.toMatchObject({ shielded: address });
+      expect(restoringClient.connect).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(unifiedAddresses.filter(({ length }) => length > 128))(
+    'rejects the real $name UA ($length characters) as a new or restored session account',
+    async ({ address, length }) => {
+      expect(address).toHaveLength(length);
+      const session = withAccounts([`${ZCASH_WALLETCONNECT_CHAIN_ID}:${address}`]);
+      const client = new MockSignClient();
+      client.approvedSession = session;
+      const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
+      await expect(adapter.connect()).rejects.toThrow('1–128 CAIP-10 characters');
+      expect(adapter.isConnected).toBe(false);
+
+      client.sessions = [session];
+      await expect(adapter.connect({ silent: true })).rejects.toBeInstanceOf(WalletNotConnectedError);
+      expect(adapter.isConnected).toBe(false);
+      expect(client.connect).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(unifiedAddresses.filter(({ length }) => length > 128))(
+    'rejects the real $name long UA as a getAddress response without fabricating a replacement',
+    async ({ address }) => {
+      const client = new MockSignClient();
+      const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
+      await adapter.connect();
+      client.addressResponse = { address, type: 'shielded' };
+      await expect(adapter.getAddress()).rejects.toThrow('1–128 CAIP-10 characters');
+      expect(adapter.transparentAddress).toBe(transparentAddress);
+      expect(adapter.isConnected).toBe(true);
+    },
+  );
+
+  it.each(unifiedAddresses)(
+    'forwards the complete real $name UA ($length characters) as a transfer recipient',
+    async ({ address }) => {
+      const client = new MockSignClient();
+      const adapter = new WalletConnectZcashWalletAdapter({ projectId: 'project-id', client });
+      await adapter.connect();
+      await expect(adapter.signAndSendTransaction({ to: address, amount: '0.001' }))
+        .resolves.toBe('walletconnect-txid');
+      expect(client.requests.at(-1)).toMatchObject({
+        request: { method: 'zcash_transfer', params: { to: address } },
+      });
+    },
+  );
+
   it.each(['transparent', 'shielded', 'total', 'spendable', 'available'])(
     'rejects balances missing required %s instead of fabricating zero', async (field) => {
       const client = new MockSignClient();

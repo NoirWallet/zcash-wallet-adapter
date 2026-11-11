@@ -89,14 +89,19 @@ await store.autoConnect();
 
 For React DApps, start with the [WalletConnect React integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/walletconnect-react.en.md) for the built-in QR selector or a headless UI. Mobile wallet teams (such as Zodl) can use the [mobile wallet integration guide](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/mobile-wallet-walletconnect.en.md) for the wallet-side protocol. Use the [WalletConnect acceptance specification](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/walletconnect-acceptance.en.md) to test an integration with a compatible wallet.
 
-The WalletConnect integration uses adapter-maintained Zcash RPC conventions,
-not an official WalletConnect Zcash RPC standard. The
-[session contract](docs/mobile-wallet-walletconnect.en.md#3-session-protocol-and-compatibility)
-is revision **2026-11-10**, with implementation baseline **0.2.5 source
-(unreleased)**. Pin the adapter version and source commit with the wallet team;
-the revision constant is documentation metadata, with no version negotiation or
-new RPC parameters. Version 0.2.5 must be published before registry installation
-and integration acceptance against that release.
+The [RFC 0001 community discussion draft](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/rfc/0001-zcash-walletconnect.md)
+proposes these adapter-maintained conventions for review. Its status is
+**Draft / Request for Comments**; it has not been adopted as an official Zcash
+or WalletConnect RPC standard. Wallet support must be implemented and tested.
+
+The [session contract](docs/mobile-wallet-walletconnect.en.md#3-session-protocol-and-compatibility)
+is revision **2026-11-10**. Its reference implementation is the **published
+0.2.5** package, source
+[`f6938fd`](https://github.com/NoirWallet/zcash-wallet-adapter/commit/f6938fd6ba3dfffb28bcc9609c0c5c2ff0c09679).
+Pin that release and source commit with the wallet team. The revision constant
+is documentation metadata; no version negotiation or new RPC parameters are
+introduced. The RFC records package integrity and separates this release from
+later source additions.
 
 It requests the Zcash mainnet chain
 `bip122:00040fe8ec8471911baa1db1266ea15d` and these methods:
@@ -127,7 +132,7 @@ an address in the current selected set, not merely a session-authorized address.
 This limit does not apply to transfer recipients:
 `zcash_transfer.params.to` may be a longer valid mainnet UA supported by the wallet.
 No alternative session identity or forced transparent-address disclosure is
-defined. Native mobile implementations and real-wallet end-to-end acceptance
+defined. See the [address support matrix](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/mobile-wallet-walletconnect.en.md#address-support-matrix) for session, getAddress, and transfer-recipient behavior. Native mobile implementations and real-wallet end-to-end acceptance
 remain separate integration work; this revision does not assert a completed Zodl
 integration.
 
@@ -614,3 +619,11 @@ Transaction and signing failures emit `error` without clearing the active connec
 ## Security recommendations
 
 Authentication messages should be generated and verified by the server. At minimum, include the domain, intended action, nonce, issued-at time, and expiration time. Never ask users to sign ambiguous text, and never send shielded addresses, authorized account lists, or balances to analytics services.
+
+## Project license status
+
+The project license and copyright holder are pending a maintainer decision.
+No root project LICENSE or package license declaration has been selected. See
+[RFC 0001](https://github.com/NoirWallet/zcash-wallet-adapter/blob/main/docs/rfc/0001-zcash-walletconnect.md#decisions-and-next-steps)
+for the remaining release work. The separately attributed upstream UA test
+fixtures carry their own MIT notice; it does not select a license for this project.

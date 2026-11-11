@@ -1,6 +1,8 @@
 # Zcash Wallet Adapter Acceptance Specification
 
-Subject: WalletConnect support in @rhea-finance/zcash-wallet-adapter. Implementation baseline: **0.2.5 source (unreleased)**. Contract revision: **2026-11-10**.
+Subject: WalletConnect support in @rhea-finance/zcash-wallet-adapter. Implementation baseline: **0.2.5 (published)**, source [`f6938fd`](https://github.com/NoirWallet/zcash-wallet-adapter/commit/f6938fd6ba3dfffb28bcc9609c0c5c2ff0c09679). Contract revision: **2026-11-10**.
+
+This is an acceptance specification for the [RFC draft](rfc/0001-zcash-walletconnect.md), not an executed wallet test report. The [implementation status](rfc/0001-zcash-walletconnect.md#implementation-and-validation-status) records evidence and remaining work, including unverified Zodl integration.
 
 ## 1. Scope and Usage
 
@@ -8,7 +10,7 @@ This specification covers package installation, interfaces, state management, an
 
 WalletConnect is the connection protocol. The adapter's current WalletConnect transport supports Zcash Mainnet; it does not add Ethereum, other chains, or PCZT signing. The wallet handles authorization, fees, coin selection, shielded proofs, signing, and broadcasting. The adapter maps requests and manages application-side state.
 
-Install the target release in the consuming application. Version 0.2.5 must be published before this command can be used:
+Install the published reference release in the consuming application:
 
 ```bash
 pnpm add @rhea-finance/zcash-wallet-adapter@0.2.5
@@ -47,7 +49,7 @@ Action: authorize one logical account with supported shielded and transparent ad
 
 Pass: addresses match wallet authorization data; getAddress() returns an address in the current selected set, initially the approved session accounts. After a single-address event it must reject the deselected address even if session-authorized; a later valid event may select it again. Reject an in-flight address response if the selection changed. If only one address category is authorized, the other remains empty and must not be fabricated. Session accounts use the exact mainnet CAIP-10 prefix; the address segment matches `[-.%a-zA-Z0-9]{1,128}` and starts with `t1`, `t3`, `zs1`, or `u1`. At most one distinct address per category is supported. Empty, testnet, unknown-prefix, malformed CAIP-10, and over-128-character account addresses are rejected for both new connection and restoration. A supplied getAddress().account must equal the exact chain ID plus `:` plus the returned address; a supplied type must match its category. An unapproved address or mismatched optional field must fail.
 
-Use protocol fixtures at the 128/129-character boundary to test syntax enforcement; those fixtures are not proof of valid Zcash addresses. In real-wallet tests, the wallet must decode addresses and verify checksums, mainnet, and UA receiver capabilities. The adapter only checks syntax and supported prefixes. A complete UA over 128 characters cannot be a session account or getAddress() result under this revision. No truncation, hash substitution, or automatic transparent-address disclosure is an acceptable workaround. The session public key is not a Zcash identity public key and must not be used to verify address ownership.
+Use the [pinned official UA fixtures](../src/wallets/walletconnect/__fixtures__/README.md) to check 106-character single-receiver session addresses, rejected long multi-receiver session/getAddress values, and unchanged forwarding of complete recipients. The [address support matrix](mobile-wallet-walletconnect.en.md#address-support-matrix) defines the expected paths. Use synthetic protocol fixtures at the 128/129-character boundary to test syntax enforcement; those fixtures are not proof of valid Zcash addresses. In real-wallet tests, the wallet must decode addresses and verify checksums, mainnet, and UA receiver capabilities. The adapter only checks syntax and supported prefixes. A complete UA over 128 characters cannot be a session account or getAddress() result under this revision. No truncation, hash substitution, or automatic transparent-address disclosure is an acceptable workaround. The session public key is not a Zcash identity public key and must not be used to verify address ownership.
 
 WC-04 Balances
 

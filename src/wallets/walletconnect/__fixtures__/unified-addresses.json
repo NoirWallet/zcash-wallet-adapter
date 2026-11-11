@@ -1,0 +1,71 @@
+[
+  {
+    "name": "sapling",
+    "vectorIndex": 45,
+    "receivers": [
+      "sapling"
+    ],
+    "address": "u187vrwl4ampyxd5m6aj38n4ndkmj8v6gs97hkt23aps3sn5k89a0gk2smluexgdprcrtm56ezc5c7tjwlrnnl79tjtrxmqd42c5mpyz7g",
+    "length": 106
+  },
+  {
+    "name": "orchard",
+    "vectorIndex": 27,
+    "receivers": [
+      "orchard"
+    ],
+    "address": "u1ddnjsdcpm36r6aq79n3s68shjweksnmwtdltrh046s8m6xcws9ygyawalxx8n6hg6vegk0wh8zjnafxgh6msppjsljvyt0ynece3lvm0",
+    "length": 106
+  },
+  {
+    "name": "transparent-sapling",
+    "vectorIndex": 0,
+    "receivers": [
+      "p2pkh",
+      "sapling"
+    ],
+    "address": "u1l8xunezsvhq8fgzfl7404m450nwnd76zshscn6nfys7vyz2ywyh4cc5daaq0c7q2su5lqfh23sp7fkf3kt27ve5948mzpfdvckzaect2jtte308mkwlycj2u0eac077wu70vqcetkxf",
+    "length": 141
+  },
+  {
+    "name": "transparent-orchard",
+    "vectorIndex": 9,
+    "receivers": [
+      "p2pkh",
+      "orchard"
+    ],
+    "address": "u1snf9yr883aj2hm8pksp9aymnqdwzy42rpzuffevj35hhxeckays5pcpeq7vy2mtgzlcuc4mnh9443qnuyje0yx6h59angywka4v2ap6kchh2j96ezf9w0c0auyz3wwts2lx5gmk2sk9",
+    "length": 141
+  },
+  {
+    "name": "sapling-orchard",
+    "vectorIndex": 6,
+    "receivers": [
+      "sapling",
+      "orchard"
+    ],
+    "address": "u1ay3aawlldjrmxqnjf5medr5ma6p3acnet464ht8lmwplq5cd3ugytcmlf96rrmtgwldc75x94qn4n8pgen36y8tywlq6yjk7lkf3fa8wzjrav8z2xpxqnrnmjxh8tmz6jhfh425t7f3vy6p4pd3zmqayq49efl2c4xydc0gszg660q9p",
+    "length": 178
+  },
+  {
+    "name": "transparent-sapling-orchard",
+    "vectorIndex": 3,
+    "receivers": [
+      "p2pkh",
+      "sapling",
+      "orchard"
+    ],
+    "address": "u1pg2aaph7jp8rpf6yhsza25722sg5fcn3vaca6ze27hqjw7jvvhhuxkpcg0ge9xh6drsgdkda8qjq5chpehkcpxf87rnjryjqwymdheptpvnljqqrjqzjwkc2ma6hcq666kgwfytxwac8eyex6ndgr6ezte66706e3vaqrd25dzvzkc69kw0jgywtd0cmq52q5lkw6uh7hyvzjse8ksx",
+    "length": 213
+  },
+  {
+    "name": "orchard-unknown",
+    "vectorIndex": 36,
+    "receivers": [
+      "orchard",
+      "unknown"
+    ],
+    "address": "u1uehkuaq6rpfgt4ed5zpvhczg9apgpmyk5eq9qg23j8w7jxkhdnqzacte6gu8zgzfzgxy48ryzus3wnkhfxrxmlhs34xde3f34uxcnv3y6dsgj288vu56xs9f6ghvqsgkhuwtz4kkfxj8pa27v5p3ttlst340zvwx9nj6s0zw8p3wwk3zh37dwc7znqz52gj2fpaapzxzyagah0aeyxwa9fxxvyyj6w989v96ymsgf7s8s6ej9346p60fcjzzynvf9rmxevumdvt8l9mvhdfz4u5j4h7e0zjr2sde7fu7z9s02447qg6qzllm22egnx6ej6qczkkk2ygvpy08un9ggp853sddp6vskrlar6sygxec5f6c2t2eu9zmc728esy4sj9z853gxuplr6hw7lpcwzk20d85vuflnhlfv8nr3020r0v9z83ryudsyjv66rttxq2cscqlrdxakrmpjptzcf",
+    "length": 472
+  }
+]

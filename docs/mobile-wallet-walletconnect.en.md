@@ -1,10 +1,10 @@
 # Zcash Mobile Wallet Integration with WalletConnect
 
-Contract revision: **2026-11-10**. Implementation baseline: **0.2.5 source (unreleased)**. Pin the adapter release and source commit when starting an integration; do not assume the published `latest` package contains this revision.
+Contract revision: **2026-11-10**. Implementation baseline: **0.2.5 (published)**, source [`f6938fd`](https://github.com/NoirWallet/zcash-wallet-adapter/commit/f6938fd6ba3dfffb28bcc9609c0c5c2ff0c09679). Pin the adapter release and source commit when starting an integration; do not assume the published `latest` package contains this revision.
 
 This guide is for mobile wallet teams, such as Zodl, that already provide Zcash accounts, balance synchronization, and transactions. It explains how to act as a **WalletConnect v2 wallet responder** for DApps using `@rhea-finance/zcash-wallet-adapter`.
 
-Mentioning Zodl does not imply an existing integration or commitment. The Zcash RPC methods below are application conventions maintained by this adapter, not an official WalletConnect Zcash RPC standard. They are not supported by every WalletConnect wallet or DApp. The current scope is **Zcash Mainnet**.
+Mentioning Zodl does not imply an existing integration or commitment. The Zcash RPC methods below are application conventions maintained by this adapter, not an official WalletConnect Zcash RPC standard. They are not supported by every WalletConnect wallet or DApp. The current scope is **Zcash Mainnet**. See [RFC 0001](rfc/0001-zcash-walletconnect.md) for the community discussion draft, published baseline evidence, implementation status, and open UA/account-model decisions.
 
 ## 1. What the Wallet Team Needs to Build
 
@@ -103,6 +103,36 @@ The adapter checks the chain, address character set, length, and supported prefi
 **A complete UA longer than 128 characters is not supported in session accounts by this contract.** Do not truncate it, substitute a hash or invented ID, or silently expose a transparent address to bypass the restriction. If the wallet cannot obtain the user's authorization for an actual supported address, this session/address model cannot represent that wallet account. Supporting it requires a separately specified future protocol change; this guide does not introduce an alternative identity or address RPC.
 
 The limit comes from the account-address segment in [CAIP-10](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-10.md), not the [Zcash Unified Address encoding](https://zips.z.cash/zip-0316). It also applies to the authorized address returned by `zcash_getAddress`. **It does not apply to `zcash_transfer.params.to`**: a transfer recipient is a payment address, not a CAIP-10 account. A wallet may accept a longer mainnet UA recipient after validating the full address and receiver support.
+
+### Address Support Matrix
+
+This table describes the adapter's structural account checks and recipient
+forwarding. The wallet must fully decode addresses, verify checksums/network,
+confirm ownership for disclosed accounts, and select supported receivers.
+`u1` alone does not prove a particular receiver exists.
+
+| Address | Session account | `getAddress()` result | `zcash_transfer.params.to` |
+| --- | --- | --- | --- |
+| Mainnet `t1` / `t3` | Accepted within the profile's syntax/length limits | Must also be currently selected and session-authorized | Forwarded; wallet validates recipient and funding/memo support |
+| Mainnet `zs1` | Accepted within the profile's syntax/length limits | Must also be currently selected and session-authorized | Forwarded; wallet validates recipient and funding/memo support |
+| Mainnet Revision 0 `u1`, at most 128 characters | Accepted as shielded only with wallet-validated shielded receiver support | Must also be currently selected and session-authorized | Complete address forwarded; wallet decodes and selects a receiver |
+| Mainnet Revision 0 `u1`, over 128 characters | Rejected; a wallet authorizing only this address cannot connect under this model | Rejected; no truncated or substituted address | Complete address forwarded without the CAIP-10 length cap; wallet decodes and selects a receiver |
+| Revision 2 `zu` / `tu`, Sprout, TEX, or another prefix outside this profile | Rejected | Rejected | No adapter address decoder is provided; wallet must reject unsupported formats |
+| Testnet or malformed address | Rejected by account syntax/network checks where detectable; checksum checks remain wallet-side | Rejected by the same checks | Wallet MUST reject invalid encoding or a network mismatch; forwarding is not validation |
+
+The pinned [upstream fixtures](../src/wallets/walletconnect/__fixtures__/README.md)
+include 106-character single-receiver UAs, 141-character transparent-plus-shielded
+UAs, a 178-character Sapling-plus-Orchard UA, a 213-character three-receiver UA,
+and an example containing an unknown item. These lengths describe the selected
+vectors, not all possible UAs. Adapter tests verify short-UA accounts, long-UA
+rejection, and full-recipient forwarding; they do not run a wallet decoder or
+execute a payment. Synthetic 128/129-character fixtures test syntax boundaries
+separately.
+
+For wallets requiring longer UAs as their only disclosed account addresses,
+full compatibility remains an [open RFC design question](rfc/0001-zcash-walletconnect.md#unified-address-compatibility).
+This revision does not define a replacement identity, new address RPC, or an
+automatic transparent-address fallback.
 
 ## 4. Mobile Wallet Implementation
 
@@ -258,9 +288,21 @@ walletKit.on('session_request', async ({ topic, id, params }) => {
 
 These wallet functions are intentionally not part of this repository. They must validate the request fields and obtain user approval; returning `txid` without a real broadcast or returning a dummy signature will not pass the acceptance tests. Store `topic:id -> txid` across process restarts so a redelivered request cannot broadcast twice. Use the SDK's standard rejection/error helpers where available, and distinguish user rejection (`5000`), invalid parameters (`-32602`), and unsupported methods (`4200`). Do not turn technical failures into user rejection; the outline preserves an existing numeric error code and uses `-32603` for an unclassified internal failure. On `session_delete` or expiry, remove the topic's account mapping and pending approvals; provide a connected-DApps screen to call `disconnectSession` when the user revokes access.
 
-### Native iOS and Android
+### Native Platform References
 
 The wire contract in Sections 3 and 5 is platform-independent. If the wallet is native rather than React Native, use the official [iOS](https://docs.walletconnect.com/wallets/ios/installation) or [Android](https://docs.walletconnect.com/wallets/android/installation) WalletKit SDK and implement the same steps: initialize before processing a scanned/deep-linked `wc:` URI, approve a `bip122` proposal with CAIP-10 accounts, dispatch the four Zcash methods, return a JSON-RPC result/error for each request, and manage session deletion and expiry. Do not copy the TypeScript APIs into Swift or Kotlin; follow the platform SDK's event and response signatures.
+
+| Platform | Official SDK documentation | Repository example status |
+| --- | --- | --- |
+| iOS / Swift | [Installation](https://docs.walletconnect.com/wallets/ios/installation), [usage](https://docs.walletconnect.com/wallets/ios/usage) | No complete native Zcash example or executed native acceptance report |
+| Android / Kotlin | [Installation](https://docs.walletconnect.com/wallets/android/installation), [usage](https://docs.walletconnect.com/wallets/android/usage) | No complete native Zcash example or executed native acceptance report |
+| React Native / TypeScript | [Installation](https://docs.walletconnect.com/wallets/react-native/installation), [usage](https://docs.walletconnect.com/wallets/react-native/usage) | The starter above is a handler outline requiring wallet-engine functions |
+
+Each platform maps pairing, proposals, requests, and lifecycle events onto the
+same session/RPC contract. The SDK supplies transport; the wallet implements the
+custom Zcash methods. These references do not establish a completed Zodl
+integration. Record actual wallet builds and test results using the acceptance
+specification before making a compatibility claim.
 
 ### Lifecycle and Safety
 

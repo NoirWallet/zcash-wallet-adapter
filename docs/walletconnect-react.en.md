@@ -1,6 +1,6 @@
 # WalletConnect in React
 
-Contract revision: **2026-11-10**. Implementation baseline: **0.2.5 source (unreleased)**. The [session contract](mobile-wallet-walletconnect.en.md#3-session-protocol-and-compatibility) defines the shared version, permissions, and address limits for this guide.
+Contract revision: **2026-11-10**. Implementation baseline: **0.2.5 (published)**, source [`f6938fd`](https://github.com/NoirWallet/zcash-wallet-adapter/commit/f6938fd6ba3dfffb28bcc9609c0c5c2ff0c09679). The [session contract](mobile-wallet-walletconnect.en.md#3-session-protocol-and-compatibility) defines the shared version, permissions, and address limits for this guide.
 
 Use the UI-ready `WalletProvider` for a wallet selector and pairing QR code. Use the `/react` provider only when the application supplies its own pairing UI. This adapter is the DApp side of a WalletConnect v2 connection; the wallet must support the Zcash `bip122` methods below.
 
@@ -15,7 +15,7 @@ Install the adapter in the DApp project:
 pnpm add @rhea-finance/zcash-wallet-adapter@0.2.5
 ```
 
-Version 0.2.5 must be published before this installation command can be used.
+Version `0.2.5` is published. Use this exact version for the documented baseline. See the [RFC draft and implementation status](rfc/0001-zcash-walletconnect.md); compatibility with a particular mobile wallet requires its implementation and acceptance results.
 
 ## Built-in selector and QR code
 
@@ -157,6 +157,8 @@ function ConnectButton() {
 For a custom mobile-wallet flow, replace the `onDisplayUri` callback with a QR renderer or a wallet-specific encoded deep link, and show pending, rejection, and expiration states. Do not log or send pairing URIs to analytics.
 
 ## Protocol and limits
+
+See the [address support matrix](mobile-wallet-walletconnect.en.md#address-support-matrix) for the distinct session, address-query, and transfer-recipient rules. The [RFC status](rfc/0001-zcash-walletconnect.md#implementation-and-validation-status) separates adapter tests from real wallet acceptance.
 
 New and restored sessions both require Zcash Mainnet (`bip122:00040fe8ec8471911baa1db1266ea15d`), methods `zcash_getAddress`, `zcash_getBalance`, `zcash_transfer`, `zcash_signMessage`, and events `accountsChanged`, `chainChanged`. A restored session missing any required permission is incompatible; reauthorize interactively rather than treating it as connected. Silent restoration does not open a new pairing QR.
 
